@@ -1,10 +1,27 @@
-import scrapy
-
+#import scrapy
+import pandas as pd
 import numpy
 
-# need to scrape the data and store into some easily usable format
+# read the airline accident data from the excel file, we want sheet 29 from the file
+df = pd.read_excel("AviationAccidentStatistics_2003-2022_20231228.xlsx", sheet_name=28)
 
-# next need to gather airline incident data once I can find a source
+# important columns (from zero index)
+# 13: Registration Number (to get carrier)
+# 17: Flight Regulation (commercial, private, charter, etc)
+
+
+
+#print(df.head())
+print(df)
+
+i = 1
+print("cols:")
+for col in df.columns:
+    print(f"{i}: {col}")
+    i += 1
+
+# need to scrape the review data and store into some easily usable format
+
 
 # then make the comparison between the two data sets
 
