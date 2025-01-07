@@ -1,0 +1,18 @@
+Project:
+
+
+Data Used:
+This project uses two main data sets, the first is a set of reviews for
+airline carriers pulled from Kaggle:
+https://www.kaggle.com/datasets/juhibhojani/airline-reviews/data and saved
+in the file named 'Airline_review.csv'. The
+second is a record of airline incidents and accidents pulled from the NTSB:
+https://www.ntsb.gov/safety/Pages/research.aspx and saved in a file named
+'AviationAccidentStatistics_2003-2022_20231228.xlsx'. Since the data from the
+NTSB doesn't directly mention the air carrier involved with each incident
+but the registration number, I had to run each registration number through
+the FAA website at:
+https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry. Since there
+are hundreds of records to work with, I wrote up a script to run the
+numbers through this site automatically and then wrote the results to a new
+file that I named 'registration_info.txt'.
