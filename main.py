@@ -140,52 +140,94 @@ def get_owner(soup, incident):
     main_div = soup.find('div', id='mainDiv')
 
     # next we'll get the table wrapping divs that fall underneath the main div
-    div_list = []
+    # all the data we'll need are in these tables
+    div_tables = []
     divs = main_div.find_all('div')
     for div in divs:
         if 'devkit-simple-table-wrapper' in div.attrs.get('class', []):
-            div_list.append(div)
-            #print(f"#######\n\n{div}")
-
-    #print(f"number of table wrappers: {len(div_list)}")
+            div_tables.append(div)
 
     #reserved = 'Reserved N-Number'
     deregistered = 'Deregistered Aircraft'
-    #assigned = 'Aircraft Description'
+    assigned = 'Aircraft Description'
     owner = 'Registered Owner'
 
     # go through each of the found data tables
-    for div in div_list:
+    possible_owners = {}
+    for div in div_tables:
+
+        # if the n-number is assigned, then it will have an owner caption
+        # if the n-numuber has deregistered entries, then it will have a deregistered caption
         captions = div.find_all('caption')
         for caption in captions:
-            caption_text = caption.get_text().strip()
-            if caption_text == owner: # true if the n-number is currently assigned
-                print("assigned!")
-                # grab the registration date, check against the incident date
+            issue_date = exp_date = 'NOT FOUND'
 
-                # next we'll look for the owner table to get owner information
+            caption_text = caption.get_text().strip()
+            if caption_text == assigned: # this caption will be present if the n-number is assigned
+
+                # grab the registration date
+                td_elements = div.find_all('td')
+                for td in td_elements:
+                    try:
+                        # grab the issue date and the expiration date
+                        if td['data-label'] == 'Certificate Issue Date':
+                            issue_date = td.get_text().strip()
+                        elif td['data-label'] == 'Expiration Date':
+                            exp_date = td.get_text().strip()
+                    except:
+                        continue
+
+            elif caption_text == owner: # this caption will also be present if the n-number is assigned
+
+                # grab the current owner information
+                td_elements = div.find_all('td')
+                for td in td_elements:
+                    try:
+                        # check every td that has a data-label of 'Name'
+                        if td['data-label'] == 'Name':
+                            name = td.get_text().strip()
+                            if name != 'CANCELLED/NOT ASSIGNED' and name != 'SALE REPORTED' and name != 'None':
+                                possible_owners[name] = {'ISSUE':issue_date, 'CANCEL':exp_date}
+                    except:
+                        continue
+
             elif caption_text == deregistered: # true if the n-number has deregistered records
+
                 # for each deregistered owner, check the date against the incident date
-                print("Deregistered!")
+                found_issue = found_cancel = False
+
+                td_elements = div.find_all('td')
+                for td in td_elements:
+                    if td['data-label']:
+                        # look for certificate issue and cancel dates, and the owner
+                        if td['data-label'] == 'Certificate Issue Date':
+                            issue_date = td.get_text().strip()
+                            found_issue = True
+
+                        elif td['data-label'] == 'Cancel Date':
+                            cancel_date = td.get_text().strip()
+                            found_cancel = True
+
+                        elif td['data-label'] == 'Name':
+                            # since the owner is the last record to appear, we'll add what we have to the dict
+                            if found_issue and found_cancel:
+                                deregistered_owner = td.get_text().strip()
+                                possible_owners[deregistered_owner] = {'ISSUE':issue_date, 'CANCEL':cancel_date}
+                                issue_date = cancel_date = False
+                            else:
+                                print('An owner was found out of order...')
+                        
             else:
-                # either the n-number is reserved or there is some error
+                # we found a table that doesn't match any of the above
                 print(f"Caption: {caption_text}")
+
+            # now that we have a dict of all the deregistered owners, find the correct one, if any
+            keys = possible_owners.keys()
+            for possible_owner in keys:
+                date_dict = possible_owners[possible_owners]
 
     num = denom = 1
     header = f"DeregisteredAircraft{num}of{denom}"
-
-
-    """ # get all of the td tags, one of them should have the owner
-    elements = soup.find_all('td')
-    for item in elements:
-        try:
-            if item['data-label'] == 'Name' or item['data-label'] == 'Reserving Party Name':
-                name = item.get_text().strip()
-                if name == 'CANCELLED/NOT ASSIGNED' or name == 'SALE REPORTED' or name == 'None':
-                    continue
-                owners.append(item.get_text().strip())
-        except:
-            continue """
     
     return records
 
