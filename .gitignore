@@ -1,6 +1,8 @@
+.gitignore
 pyvenv.cfg
 bin
 lib
 lib64
 server.py
 cookies.py
+test.py

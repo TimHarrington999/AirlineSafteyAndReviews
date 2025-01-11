@@ -67,7 +67,7 @@ def main():
             pickle.dump(airlines, file)
 
     # make some pretty graphs using numpy or something
-
+    print(f"number of records found: {len(airlines)}")
 
 
 
@@ -106,20 +106,22 @@ def get_registration(incidents):
 
         session = requests.session()
 
-        # use get first because this page uses cookies
+        # use GET first because this page uses cookies
         response = session.get(get_url, headers=headers)
         response = session.post(post_url, headers=headers, data=payload)
 
         # parse the html and save a copy
         soup = BeautifulSoup(response.text, 'html.parser')
+
+        # next we'll find the owner during the time of the incident
         owner = get_owner(soup, incident)
         if len(owner) != 0:
             # if an owner was found, add it to the dict along with other incident info
             airlines[incident[0]] = owner
-            print(f"{i}: ({incident[0]}: {airlines[incident[0]]})")
+            print(f"{i}: ({incident[0]} on {incident[3]}: {airlines[incident[0]]})\n")
             
         else:
-            print(f"{i}: ({incident[0]}: ###NO OWNER FOUND###)")
+            print(f"{i}: ({incident[0]} on {incident[3]}: ###NO OWNER FOUND###)\n")
 
         i += 1
 
@@ -127,10 +129,7 @@ def get_registration(incidents):
 
 # looks through the html soup to find the registered owner
 def get_owner(soup, incident):
-    records = []
-
-    # extract the date of the incident to make sure we grab the correct record from the
-    # faa website
+    # extract the date of the incident to make sure we grab the correct record from the faa website
     inc_date = incident[3]
     inc_year = inc_date.year
     inc_month = inc_date.month
@@ -140,96 +139,143 @@ def get_owner(soup, incident):
     main_div = soup.find('div', id='mainDiv')
 
     # next we'll get the table wrapping divs that fall underneath the main div
-    # all the data we'll need are in these tables
     div_tables = []
     divs = main_div.find_all('div')
     for div in divs:
         if 'devkit-simple-table-wrapper' in div.attrs.get('class', []):
             div_tables.append(div)
 
-    #reserved = 'Reserved N-Number'
+    # these are the captions that describe the tables that we want to look for
     deregistered = 'Deregistered Aircraft'
     assigned = 'Aircraft Description'
     owner = 'Registered Owner'
 
-    # go through each of the found data tables
+    # extract every possible owner from these div tables
+    issue_date = exp_date = 'NOT FOUND'
     possible_owners = {}
     for div in div_tables:
-
         # if the n-number is assigned, then it will have an owner caption
         # if the n-numuber has deregistered entries, then it will have a deregistered caption
+
+        # pull the captions that are under the current div
         captions = div.find_all('caption')
         for caption in captions:
-            issue_date = exp_date = 'NOT FOUND'
-
             caption_text = caption.get_text().strip()
-            if caption_text == assigned: # this caption will be present if the n-number is assigned
 
+            ##### This segment gets the listed owner under the current registration, if it exists #####
+            if caption_text == assigned: # this caption will be present if the n-number is assigned
+                
                 # grab the registration date
                 td_elements = div.find_all('td')
                 for td in td_elements:
-                    try:
+                    if td['data-label']:
                         # grab the issue date and the expiration date
                         if td['data-label'] == 'Certificate Issue Date':
-                            issue_date = td.get_text().strip()
+                            if td.get_text().strip() != 'None':
+                                issue_date = td.get_text().strip()
+                            else:
+                                issue_date = 'NOT FOUND'
                         elif td['data-label'] == 'Expiration Date':
-                            exp_date = td.get_text().strip()
-                    except:
-                        continue
+                            if td.get_text().strip() != 'None':
+                                exp_date = td.get_text().strip()
+                            else:
+                                exp_date = 'NOT FOUND'
 
             elif caption_text == owner: # this caption will also be present if the n-number is assigned
-
+                
                 # grab the current owner information
                 td_elements = div.find_all('td')
                 for td in td_elements:
-                    try:
+                    if td['data-label']:
                         # check every td that has a data-label of 'Name'
                         if td['data-label'] == 'Name':
                             name = td.get_text().strip()
                             if name != 'CANCELLED/NOT ASSIGNED' and name != 'SALE REPORTED' and name != 'None':
                                 possible_owners[name] = {'ISSUE':issue_date, 'CANCEL':exp_date}
-                    except:
-                        continue
 
+            ##### This segment gets the listed owner(s) that have been deregistered #####
             elif caption_text == deregistered: # true if the n-number has deregistered records
 
                 # for each deregistered owner, check the date against the incident date
                 found_issue = found_cancel = False
+                issue_date = exp_date = 'NOT FOUND'
 
                 td_elements = div.find_all('td')
                 for td in td_elements:
                     if td['data-label']:
                         # look for certificate issue and cancel dates, and the owner
                         if td['data-label'] == 'Certificate Issue Date':
-                            issue_date = td.get_text().strip()
+                            if td.get_text().strip() != 'None':
+                                issue_date = td.get_text().strip()
+                            else:
+                                issue_date = 'NOT FOUND'
                             found_issue = True
 
                         elif td['data-label'] == 'Cancel Date':
-                            cancel_date = td.get_text().strip()
+                            if td.get_text().strip() != 'None':
+                                cancel_date = td.get_text().strip()
+                            else:
+                                cancel_date = 'NOT FOUND'
                             found_cancel = True
 
                         elif td['data-label'] == 'Name':
                             # since the owner is the last record to appear, we'll add what we have to the dict
                             if found_issue and found_cancel:
                                 deregistered_owner = td.get_text().strip()
-                                possible_owners[deregistered_owner] = {'ISSUE':issue_date, 'CANCEL':cancel_date}
-                                issue_date = cancel_date = False
+                                if deregistered_owner != 'CANCELLED/NOT ASSIGNED' and deregistered_owner != 'SALE REPORTED' and deregistered_owner != 'None':
+                                    possible_owners[deregistered_owner] = {'ISSUE':issue_date, 'CANCEL':cancel_date}
+                                found_issue = found_cancel = False
                             else:
                                 print('An owner was found out of order...')
+
+    # now that we have a dict of all the deregistered owners, find the correct one, if any
+    keys = possible_owners.keys()
+    for possible_owner in keys:
+        date_dict = possible_owners[possible_owner]
+
+        # the dates are of the form mm/dd/yyyy
+        #print(f"ISSUE: {date_dict['ISSUE']}; CANCEL: {date_dict['CANCEL']}")
+        if date_dict['ISSUE'] != 'NOT FOUND' and date_dict['CANCEL'] != 'NOT FOUND':
+            str_issue_month, str_issue_day, str_issue_year = date_dict['ISSUE'].split('/', 2)
+            str_exp_month, str_exp_day, str_exp_year = date_dict['CANCEL'].split('/', 2)
+        else:
+            # we could not find the dates for the current entry, we can't use it
+            continue
+
+        issue_month, issue_day, issue_year = int(str_issue_month), int(str_issue_day), int(str_issue_year)
+        exp_month, exp_day, exp_year = int(str_exp_month), int(str_exp_day), int(str_exp_year)
+
+        # the date of the incident must be between the issue and cancel dates
+        if inc_year > issue_year and inc_year < exp_year:
+            # The incident is within the correct range, this is the correct owner
+            return [possible_owner, possible_owners[possible_owner]]
+                
+        # if the incident and the issue date have the same year
+        elif inc_year == issue_year:
+            if inc_month > issue_month:
+                # the incident is within the correct range, this is the correct owner
+                return [possible_owner, possible_owners[possible_owner]]
+                    
+            # if the incident and the issue dates have the same month and year
+            elif inc_month == issue_month:
+                if inc_day >= issue_day:
+                    return [possible_owner, possible_owners[possible_owner]]
+
+        # if the incident and the expiration date have the same year
+        elif inc_year == exp_year: 
+            if inc_month < exp_month:
+                # the incident is wihin the correct range, this is the correct owner
+                return [possible_owner, possible_owners[possible_owner]]
+                    
+            # if the incident and the expiration dates have the same month and year
+            elif inc_month == exp_month:
+                if inc_day >= exp_day:
+                    return [possible_owner, possible_owners[possible_owner]]
                         
-            else:
-                # we found a table that doesn't match any of the above
-                print(f"Caption: {caption_text}")
+    # if we make it out of the for loop without returning, none of the entries matched the date
+    #print(f"NO OWNER FOUND, PRINTING POSSIBLE OWNERS DICTIONARY:\n{possible_owners}\n")
 
-            # now that we have a dict of all the deregistered owners, find the correct one, if any
-            keys = possible_owners.keys()
-            for possible_owner in keys:
-                date_dict = possible_owners[possible_owners]
-
-    num = denom = 1
-    header = f"DeregisteredAircraft{num}of{denom}"
-    
-    return records
+    return {}
 
 # prints the columns in an excel file
 def test_print_df_cols(df):
