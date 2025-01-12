@@ -15,4 +15,32 @@ the FAA website at:
 https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry. Since there
 are hundreds of records to work with, I wrote up a script to run the
 numbers through this site automatically and then wrote the results to a new
-file that I named 'registration_info.txt'.
+file that I named 'registration_info.pkl'.
+
+Development Process:
+The development began with a search for datasets. I was lucky to be able to
+find a good data set for customer reviews of airlines but had more
+difficulty finding a dataset for incidents for each commercial airline. The
+closest I could find was a data set from the NTSB that contained records of
+flight incidents and accidents from 2003 through 2022. Each record
+contained the N-Number for the plane involved in the accident, but not the
+airline specifically. Furthermore, the records weren't exclusive to
+commercial airlines so those would have to be filtered out.
+
+As it turns out, the faa website has a feature where you can input an
+N-Number and get the registration data. To do this by hand would be too
+tedious, so I wrote a webs craper to quickly and accurately get this
+data. This process took much longer than I originally anticipated. This is
+the first time that I've created a web scraper so it took some time to
+learn how to even start. In the end, the battle became making sure the
+scraper scraped the correct data. Since multiple records could be tied to
+an N-Number it had to correctly determine which one, if any, was the one
+active during the corresponding incident.
+
+After finishing the web scraper, I discovered that I don't have nearly as
+much data as I thought I had originally. The original data set of incidents
+had nearly 27,000 records. However, after filtering out non-commercial
+flights and flights that didn't have a findable owner, I only had 299
+records! At this point, I decided to double check for more data sets in
+this area online. To me, this seems to just be a testament to how safe air
+travel is, at least commercially.

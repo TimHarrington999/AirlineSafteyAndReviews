@@ -7,17 +7,7 @@ import json
 import numpy
 
 def main():
-    # read the airline accident data from the excel file, we want sheet 29 from the file
-    # col 13: Registration Number (to get airline carrier)
-    # col 17: Flight Regulation (commercial, private, charter, etc; we are looking for commercial)
-    print("Reading accident data . . .")
-    accident_df = pd.read_excel("AviationAccidentStatistics_2003-2022_20231228.xlsx", sheet_name=28)
-
-    # now we'll create a list of N-Numbers from part 121 airlines from the accident data
-    incidents = get_incident_records(accident_df)
-    print(f"Found {len(incidents)} commercial flights")
-
-    # next we'll read the csv file of customer review data
+    # read the csv file of customer review data
     # col 1: Airline name
     # col 5: If the review is verified
     # col 6: Review text we will be analyzing (the core of the project)
@@ -61,14 +51,34 @@ def main():
 
     # user requested, or forced, to fetch the registration data
     if query:
+        # read the airline accident data from the excel file, we want sheet 29 from the file
+        # col 13: Registration Number (to get airline carrier)
+        # col 17: Flight Regulation (commercial, private, charter, etc; we are looking for commercial)
+        print("Reading accident data . . .")
+        accident_df = pd.read_excel("AviationAccidentStatistics_2003-2022_20231228.xlsx", sheet_name=28)
+
+        # we need to replace the NaN values, this poses a problem for airline scoring later
+        accident_df['Highest Injury Level'] = accident_df['Highest Injury Level'].fillna('None')
+        accident_df['Damage Level'] = accident_df['Damage Level'].fillna('None')
+
+        # now we'll create a list of N-Numbers from part 121 airlines from the accident data
+        incidents = get_incident_records(accident_df)
+        print(f"Found {len(incidents)} commercial flights")
+
         print("Fetching registration info . . .")
         with open(file_path, "wb") as file:
             airlines = get_registration(incidents)
             pickle.dump(airlines, file)
 
-    # make some pretty graphs using numpy or something
-    print(f"number of records found: {len(airlines)}")
+    print(f"number of records found/retrieved: {len(airlines)}")
 
+    # next we need to group these records by airline
+    grouped_airlines = group_sort_airlines(airlines)
+
+    # and then create an incident score for each of the large airlines
+    airline_scores = score_airlines(grouped_airlines)
+
+    # now we need to analyze the customer reviews for the companies that we have scores for
 
 
 # create a list of just part 121 flights from a df
@@ -94,6 +104,7 @@ def get_registration(incidents):
     }
 
     # this is the dict that will hold the record of incident information
+    # n-numbers are the keys
     airlines = {}
 
     # go through the N-Numbers and determine the registration information
@@ -116,8 +127,8 @@ def get_registration(incidents):
         # next we'll find the owner during the time of the incident
         owner = get_owner(soup, incident)
         if len(owner) != 0:
-            # if an owner was found, add it to the dict along with other incident info
-            airlines[incident[0]] = owner
+            # if an owner was found, add it to the dict along with injury and damage info
+            airlines[incident[0]] = (owner, incident[1], incident[2])
             print(f"{i}: ({incident[0]} on {incident[3]}: {airlines[incident[0]]})\n")
             
         else:
@@ -276,6 +287,55 @@ def get_owner(soup, incident):
     #print(f"NO OWNER FOUND, PRINTING POSSIBLE OWNERS DICTIONARY:\n{possible_owners}\n")
 
     return {}
+
+# takes a dictionary of airline records and groups them by airline
+# returns a dictionary consisting of each airline and the records for those airlines
+def group_sort_airlines(airlines):
+    grouped_airlines = {}
+    for airline in airlines:
+        if airlines[airline][0][0] not in grouped_airlines.keys():
+            grouped_airlines[airlines[airline][0][0]] = [(airline, airlines[airline])]
+        else:
+            grouped_airlines[airlines[airline][0][0]].append((airline, airlines[airline]))
+    
+    sorted_airlines = dict(sorted(grouped_airlines.items()))
+
+    # test print the groupings
+    """ for group in sorted_airlines:
+        print(f"Name: {group}\nRecords: {sorted_airlines[group]}\n\n") """
+
+    return sorted_airlines
+
+# creates an incident score for each airline in a grouped airline dictionary
+def score_airlines(grouped_airlines):
+    airline_scores = []
+
+    # convert the injury and damage level to a weight
+    rubric = {
+        'None' : 1,
+        'Minor' : 2,
+        'Serious' : 3,
+        'Substantial' : 3,
+        'Fatal' : 4,
+        'Destroyed' : 4
+    }
+
+    # set a minimum number of records an airline would need in order to be scored
+    min_records = 8
+
+    # step through the grouped airlines dictionary and score qualifying airlines
+    for airline_name in grouped_airlines:
+        if len(grouped_airlines[airline_name]) >= min_records:
+            # we have a qualifying airline, perform the weighted scoring
+            sum = 0
+            for airline in grouped_airlines[airline_name]:
+                sum += (rubric[airline[1][1]] + rubric[airline[1][2]])
+
+            avg = sum / (2 * len(grouped_airlines[airline_name]))
+
+            airline_scores.append((airline_name, avg))
+
+    return airline_scores
 
 # prints the columns in an excel file
 def test_print_df_cols(df):
