@@ -7,13 +7,9 @@ import json
 import numpy
 
 def main():
-    # read the csv file of customer review data
-    # col 1: Airline name
-    # col 5: If the review is verified
-    # col 6: Review text we will be analyzing (the core of the project)
-    print("Reading review data . . .")
-    review_df = pd.read_csv("Airline_review.csv")
+    ##### Airline Incident Data #####
 
+    # we'll begin by pulling in a record of airline incidents
     print("Checking for registration data . . .")
     file_path = "registration_info.pkl"
     if not os.path.exists(file_path):
@@ -57,10 +53,6 @@ def main():
         print("Reading accident data . . .")
         accident_df = pd.read_excel("AviationAccidentStatistics_2003-2022_20231228.xlsx", sheet_name=28)
 
-        # we need to replace the NaN values, this poses a problem for airline scoring later
-        accident_df['Highest Injury Level'] = accident_df['Highest Injury Level'].fillna('None')
-        accident_df['Damage Level'] = accident_df['Damage Level'].fillna('None')
-
         # now we'll create a list of N-Numbers from part 121 airlines from the accident data
         incidents = get_incident_records(accident_df)
         print(f"Found {len(incidents)} commercial flights")
@@ -77,23 +69,48 @@ def main():
 
     # and then create an incident score for each of the large airlines
     airline_scores = score_airlines(grouped_airlines)
+    
 
-    # now we need to analyze the customer reviews for the companies that we have scores for
+    ##### Customer Review Data #####
+
+    # first, read the csv file of customer review data
+    # col 1: Airline name
+    # col 11: Review Text that we will be using NLP to analyze
+    # col 18: If the Review was verified or not
+    # col 21: Review ID
+    print("Reading review data . . .")
+    review_df = pd.read_csv("AirlineReviews.csv")
+
+    # then we'll trim the review data down, we want reviews for airlines with a score
+    print("Trimming review data . . .")
+    reviews = get_review_records(review_df, airline_scores.keys())
+
+    # test print for review categorization
+    """ for airline in reviews:
+        print(f"{airline}: {len(reviews[airline])}") """
+    
+    # next, we need to process the text in each of these reviews to get a sentiment for each one
+    
+
 
 
 # create a list of just part 121 flights from a df
 def get_incident_records(df):
     incidents = []
 
-    # check every record for its aviation type
+    # pull only the part 121 flights from the dataframe
     for i in range(len(df)):
         if '121' in df.iloc[i, 17]:
             # append the n-number[0], highest injury level[1], damage level[2], and the event date[3]
             incidents.append([df.iloc[i, 13], df.iloc[i, 10], df.iloc[i, 12], df.iloc[i, 2]])
 
+    # we need to replace the NaN values, this poses a problem for airline scoring later
+    df['Highest Injury Level'] = df['Highest Injury Level'].fillna('None')
+    df['Damage Level'] = df['Damage Level'].fillna('None')
+
     return incidents
 
-# get registration information
+# get registration information for an incident record
 def get_registration(incidents):
     get_url = 'https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry'
     post_url = 'https://registry.faa.gov/aircraftinquiry/Search/NNumberResult'
@@ -292,9 +309,22 @@ def get_owner(soup, incident):
 # returns a dictionary consisting of each airline and the records for those airlines
 def group_sort_airlines(airlines):
     grouped_airlines = {}
+
+    blacklist = ['FEDERAL EXPRESS CORP', 'FEDERAL EXPRESS CORPORATION', 'UNITED PARCEL SERVICE CO',
+                 'WELLS FARGO BANK NA TRUSTEE', 'WELLS FARGO BANK NORTHWEST NA TRUSTEE',
+                 'WELLS FARGO TRUST CO NA TRUSTEE', 'WILMINGTON TRUST CO TRUSTEE']
+
+    # iterate over the dictionary of airlines
     for airline in airlines:
-        if airlines[airline][0][0] not in grouped_airlines.keys():
+        # first check to make sure we don't have one of the blacklisted names
+        if airlines[airline][0][0] in blacklist:
+            continue
+
+        # if we have encountered a new airline name, create a new entry in the dict
+        elif airlines[airline][0][0] not in grouped_airlines.keys():
             grouped_airlines[airlines[airline][0][0]] = [(airline, airlines[airline])]
+
+        # if we encounter an airline name already in the dict, update the existing listing
         else:
             grouped_airlines[airlines[airline][0][0]].append((airline, airlines[airline]))
     
@@ -308,7 +338,7 @@ def group_sort_airlines(airlines):
 
 # creates an incident score for each airline in a grouped airline dictionary
 def score_airlines(grouped_airlines):
-    airline_scores = []
+    airline_scores = {}
 
     # convert the injury and damage level to a weight
     rubric = {
@@ -328,14 +358,35 @@ def score_airlines(grouped_airlines):
         if len(grouped_airlines[airline_name]) >= min_records:
             # we have a qualifying airline, perform the weighted scoring
             sum = 0
-            for airline in grouped_airlines[airline_name]:
-                sum += (rubric[airline[1][1]] + rubric[airline[1][2]])
+            for incident_record in grouped_airlines[airline_name]:
+                sum += (rubric[incident_record[1][1]] + rubric[incident_record[1][2]])
 
             avg = sum / (2 * len(grouped_airlines[airline_name]))
 
-            airline_scores.append((airline_name, avg))
+            #airline_scores.append((airline_name, avg))
+            airline_scores[airline_name] = avg
 
     return airline_scores
+
+# create a list of airline reviews that are only for the airlines with a score
+def get_review_records(df, airline_names):
+    reviews = {}
+
+    # iterate through every review in the df
+    for i in range(len(df)):
+
+        # check if the airline name matches one we have a score for
+        for name in airline_names:
+            #if df.iloc[i, 1].upper() in name and df.iloc[i, 18] == 'Trip Verified':
+            if df.iloc[i, 1].upper() in name:
+                # we have a match! add the review record to the dict
+                # reviews[name] = [id, review text, sentiment placeholder]
+                if name not in reviews.keys():
+                    reviews[name] = [(df.iloc[i, 21], df.iloc[i, 11], -1)]
+                else:
+                    reviews[name].append((df.iloc[i, 21], df.iloc[i, 11], -1))
+
+    return reviews
 
 # prints the columns in an excel file
 def test_print_df_cols(df):
