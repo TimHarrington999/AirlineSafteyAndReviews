@@ -5,12 +5,103 @@ from bs4 import BeautifulSoup
 import pickle
 import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
+import scipy
+from scipy import stats
+import matplotlib.pyplot as plt
 import numpy as np
 
 def main():
-    ##### Airline Incident Data #####
+    ##### AIRLINE INCIDENT DATA #####
 
     # we'll begin by pulling in a record of airline incidents
+    airlines = get_airline_incident_records()
+    print(f"Number of records found/retrieved: {len(airlines)}")
+
+    # next we need to group these records by airline
+    grouped_airlines = group_sort_airlines(airlines) 
+
+
+    ##### CUSTOMER REVIEW DATA #####
+
+    # first, read the csv file of customer review data
+    # col 1: Airline name
+    # col 11: Review Text that we will be using NLP to analyze
+    # col 18: If the Review was verified or not
+    # col 21: Review ID
+    review_df = pd.read_csv("AirlineReviews.csv")
+
+
+    ##### DATA ANALYSIS #####
+
+    ##
+    ## TEST 1, minimum incidents required = 8 ##
+    ##
+    title = "Correlation Min 8"
+
+    # get the airlines with at least 8 incidents and compute average incident score for each
+    airline_scores = score_airlines(grouped_airlines, 8)
+
+    # get the review records for airlines that we have a score for, then analyze them
+    reviews = get_review_records(review_df, airline_scores.keys())
+    analyze_reviews(reviews)
+
+    print("\nAverage incident scores:")
+    for airline in airline_scores:
+        print(f"{airline}: {airline_scores[airline]}")
+
+    print("\nAverage sentiments:")
+    for airline in reviews:
+        print(f"{airline}: {reviews[airline][1]}")
+
+    analyze_data(airline_scores, reviews, title)
+
+    ##
+    ## TEST 2, minimum incidents required = 3 ##
+    ##
+    title = "Correlation Min 3"
+
+    # get the airlines with at least 8 incidents and compute average incident score for each
+    airline_scores = score_airlines(grouped_airlines, 3)
+
+    # get the review records for airlines that we have a score for, then analyze them
+    reviews = get_review_records(review_df, airline_scores.keys())
+    analyze_reviews(reviews)
+
+    print("\nAverage incident scores:")
+    for airline in airline_scores:
+        print(f"{airline}: {airline_scores[airline]}")
+
+    print("\nAverage sentiments:")
+    for airline in reviews:
+        print(f"{airline}: {reviews[airline][1]}")
+
+    analyze_data(airline_scores, reviews, title)
+
+    ##
+    ## TEST 3, minimum incidents required = 10 ##
+    ##
+    title = "Correlation Min 10"
+
+    # get the airlines with at least 8 incidents and compute average incident score for each
+    airline_scores = score_airlines(grouped_airlines, 10)
+
+    # get the review records for airlines that we have a score for, then analyze them
+    reviews = get_review_records(review_df, airline_scores.keys())
+    analyze_reviews(reviews)
+
+    print("\nAverage incident scores:")
+    for airline in airline_scores:
+        print(f"{airline}: {airline_scores[airline]}")
+
+    print("\nAverage sentiments:")
+    for airline in reviews:
+        print(f"{airline}: {reviews[airline][1]}")
+
+    analyze_data(airline_scores, reviews, title)
+
+
+# takes user prompt to either load incident records from file(if exists) or fetch from the web
+def get_airline_incident_records():
     print("Checking for registration data . . .")
     file_path = "registration_info.pkl"
     if not os.path.exists(file_path):
@@ -55,7 +146,7 @@ def main():
         accident_df = pd.read_excel("AviationAccidentStatistics_2003-2022_20231228.xlsx", sheet_name=28)
 
         # now we'll create a list of N-Numbers from part 121 airlines from the accident data
-        incidents = get_incident_records(accident_df)
+        incidents = get_commercial_flights(accident_df)
         print(f"Found {len(incidents)} commercial flights")
 
         print("Fetching registration info . . .")
@@ -63,46 +154,10 @@ def main():
             airlines = get_registration(incidents)
             pickle.dump(airlines, file)
 
-    print(f"number of records found/retrieved: {len(airlines)}")
-
-    # next we need to group these records by airline
-    grouped_airlines = group_sort_airlines(airlines)
-
-    # and then create an incident score for each of the large airlines
-    airline_scores = score_airlines(grouped_airlines)
-    
-
-    ##### Customer Review Data #####
-
-    # first, read the csv file of customer review data
-    # col 1: Airline name
-    # col 11: Review Text that we will be using NLP to analyze
-    # col 18: If the Review was verified or not
-    # col 21: Review ID
-    print("Reading review data . . .")
-    review_df = pd.read_csv("AirlineReviews.csv")
-
-    # then we'll trim the review data down, we want reviews for airlines with a score
-    print("Trimming review data . . .")
-    reviews = get_review_records(review_df, airline_scores.keys())
-
-    # test print for review categorization
-    """ for airline in reviews:
-        print(f"{airline}: {len(reviews[airline][0])}") """
-    
-    # next we'll analyze the review text for all of our collected reviews
-    print("Analyzing review data . . .")
-    analyze_reviews(reviews)
-
-    # test print the average sentiment scores
-    print("\nAverage sentiments:")
-    for airline in reviews:
-        print(f"{airline}: {reviews[airline][1]}")
-
-
+    return airlines
 
 # create a list of just part 121 flights from a df
-def get_incident_records(df):
+def get_commercial_flights(df):
     incidents = []
 
     # pull only the part 121 flights from the dataframe
@@ -117,7 +172,7 @@ def get_incident_records(df):
 
     return incidents
 
-# get registration information for an incident record
+# get registration information for a set of incident records
 def get_registration(incidents):
     get_url = 'https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry'
     post_url = 'https://registry.faa.gov/aircraftinquiry/Search/NNumberResult'
@@ -149,7 +204,7 @@ def get_registration(incidents):
         soup = BeautifulSoup(response.text, 'html.parser')
 
         # next we'll find the owner during the time of the incident
-        owner = get_owner(soup, incident)
+        owner = get_owner_information(soup, incident)
         if len(owner) != 0:
             # if an owner was found, add it to the dict along with injury and damage info
             airlines[incident[0]] = (owner, incident[1], incident[2])
@@ -163,7 +218,7 @@ def get_registration(incidents):
     return airlines
 
 # looks through the html soup to find the registered owner
-def get_owner(soup, incident):
+def get_owner_information(soup, incident):
     # extract the date of the incident to make sure we grab the correct record from the faa website
     inc_date = incident[3]
     inc_year = inc_date.year
@@ -317,9 +372,12 @@ def get_owner(soup, incident):
 def group_sort_airlines(airlines):
     grouped_airlines = {}
 
+    # these are all cargo/other airlines, except for Republic and Mesa which oddly have no data in the review set
     blacklist = ['FEDERAL EXPRESS CORP', 'FEDERAL EXPRESS CORPORATION', 'UNITED PARCEL SERVICE CO',
                  'WELLS FARGO BANK NA TRUSTEE', 'WELLS FARGO BANK NORTHWEST NA TRUSTEE',
-                 'WELLS FARGO TRUST CO NA TRUSTEE', 'WILMINGTON TRUST CO TRUSTEE']
+                 'WELLS FARGO TRUST CO NA TRUSTEE', 'WILMINGTON TRUST CO TRUSTEE', 'BANK OF UTAH TRUSTEE',
+                 'REPUBLIC AIRWAYS INC', 'MESA AIRLINES INC'
+                 ]
 
     # iterate over the dictionary of airlines
     for airline in airlines:
@@ -339,12 +397,13 @@ def group_sort_airlines(airlines):
 
     # test print the groupings
     """ for group in sorted_airlines:
-        print(f"Name: {group}\nRecords: {sorted_airlines[group]}\n\n") """
+        #print(f"Name: {group}\nRecords: {sorted_airlines[group]}\n\n")
+        print(f"{group} with {len(sorted_airlines[group])} records") """
 
     return sorted_airlines
 
 # creates an incident score for each airline in a grouped airline dictionary
-def score_airlines(grouped_airlines):
+def score_airlines(grouped_airlines, min_records):
     airline_scores = {}
 
     # convert the injury and damage level to a weight
@@ -356,9 +415,6 @@ def score_airlines(grouped_airlines):
         'Fatal' : 4,
         'Destroyed' : 4
     }
-
-    # set a minimum number of records an airline would need in order to be scored
-    min_records = 8
 
     # step through the grouped airlines dictionary and score qualifying airlines
     for airline_name in grouped_airlines:
@@ -414,8 +470,6 @@ def analyze_reviews(airline_reviews):
         # then iterate over every review for that airline
         review_list = airline_reviews[airline][0]
         for review in review_list:
-            #print(review)
-            #print('#######\n\n')
             sentiment = sia.polarity_scores(review[1])
             review[2] = convert_scale(sentiment['compound'])
             sum += review[2]
@@ -426,6 +480,29 @@ def analyze_reviews(airline_reviews):
 # converts the VADER compound score(-1 to 1) to a scale from 1 to 10
 def convert_scale(compound_score):
     return round((compound_score + 1) * 4.5 + 1)
+
+# Checks for correlation between a list of incident scores and sentiment scores for airlines
+def analyze_data(airline_scores, reviews, title):
+    incident_scores = []
+    for airline in airline_scores:
+        incident_scores.append(airline_scores[airline])
+    review_scores = []
+    for airline in reviews:
+        review_scores.append(reviews[airline][1])
+
+    plt.figure(figsize=(8, 6))
+    plt.scatter(incident_scores, review_scores, color='green', alpha=0.7)
+    plt.title(title)
+    plt.xlabel("Incident Score")
+    plt.ylabel("Sentiment Score")
+    plt.grid(True)
+    plt.show()
+
+    result_spearman = stats.spearmanr(review_scores, incident_scores)
+    print(f"Spearman Result: {result_spearman}")
+
+    result_pearson = stats.pearsonr(review_scores, incident_scores)
+    print(f"Pearson Result: {result_pearson}")
 
 # prints the columns in an excel file
 def test_print_df_cols(df):
