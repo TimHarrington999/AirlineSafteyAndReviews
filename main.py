@@ -3,8 +3,9 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import pickle
-import json
-import numpy
+import nltk
+from nltk.sentiment import SentimentIntensityAnalyzer
+import numpy as np
 
 def main():
     ##### Airline Incident Data #####
@@ -39,11 +40,11 @@ def main():
                 query = True
 
         # test print the loaded registration data
-        if not query:
+        """ if not query:
             i = 0
             for nnumber in airlines.keys():
                 print(f"{i}: ({nnumber}: {airlines[nnumber]})")
-                i += 1
+                i += 1 """
 
     # user requested, or forced, to fetch the registration data
     if query:
@@ -87,10 +88,16 @@ def main():
 
     # test print for review categorization
     """ for airline in reviews:
-        print(f"{airline}: {len(reviews[airline])}") """
+        print(f"{airline}: {len(reviews[airline][0])}") """
     
-    # next, we need to process the text in each of these reviews to get a sentiment for each one
-    
+    # next we'll analyze the review text for all of our collected reviews
+    print("Analyzing review data . . .")
+    analyze_reviews(reviews)
+
+    # test print the average sentiment scores
+    print("\nAverage sentiments:")
+    for airline in reviews:
+        print(f"{airline}: {reviews[airline][1]}")
 
 
 
@@ -372,21 +379,53 @@ def score_airlines(grouped_airlines):
 def get_review_records(df, airline_names):
     reviews = {}
 
+    # replace the NaN values in the text field, these reviews need to be left out
+    df['Review'] = df['Review'].fillna('NO TEXT')
+
     # iterate through every review in the df
     for i in range(len(df)):
+        # if the text field has 'NO TEXT', skip it
+        if df.iloc[i, 11] == 'NO TEXT':
+            continue
 
         # check if the airline name matches one we have a score for
         for name in airline_names:
-            #if df.iloc[i, 1].upper() in name and df.iloc[i, 18] == 'Trip Verified':
             if df.iloc[i, 1].upper() in name:
                 # we have a match! add the review record to the dict
-                # reviews[name] = [id, review text, sentiment placeholder]
+                # reviews[name] = [[id, review text, sentiment placeholder], avg]
+                review = [df.iloc[i, 21], df.iloc[i, 11], -1]
                 if name not in reviews.keys():
-                    reviews[name] = [(df.iloc[i, 21], df.iloc[i, 11], -1)]
+                    reviews[name] = [[review], 0]
                 else:
-                    reviews[name].append((df.iloc[i, 21], df.iloc[i, 11], -1))
+                    reviews[name][0].append(review)
 
     return reviews
+
+# analyzes the review text for a dictionary of reviews by airline
+def analyze_reviews(airline_reviews):
+    # initialize the sentiment intensity analyzer
+    sia = SentimentIntensityAnalyzer()
+
+    # iterate through each airline
+    for airline in airline_reviews:
+        #print(f"Analyzing sentiment for {airline}!")
+        sum = 0
+        
+        # then iterate over every review for that airline
+        review_list = airline_reviews[airline][0]
+        for review in review_list:
+            #print(review)
+            #print('#######\n\n')
+            sentiment = sia.polarity_scores(review[1])
+            review[2] = convert_scale(sentiment['compound'])
+            sum += review[2]
+
+        # calculate the average for the airline
+        airline_reviews[airline][1] = sum / len(review_list)
+
+# converts the VADER compound score(-1 to 1) to a scale from 1 to 10
+def convert_scale(compound_score):
+    return round((compound_score + 1) * 4.5 + 1)
 
 # prints the columns in an excel file
 def test_print_df_cols(df):
