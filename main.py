@@ -3,12 +3,9 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 import pickle
-import nltk
 from nltk.sentiment import SentimentIntensityAnalyzer
-import scipy
 from scipy import stats
 import matplotlib.pyplot as plt
-import numpy as np
 
 def main():
     ##### AIRLINE INCIDENT DATA #####
@@ -109,7 +106,7 @@ def get_airline_incident_records():
         query = True
     else:
         # query the user to read the current file or refetch from the web page
-        while True:
+        """ while True:
             user_input = input("A registration info file exists: Read file instead of fetching data? (y/n): ")
             if user_input == 'y':
                 query = False
@@ -118,7 +115,8 @@ def get_airline_incident_records():
                 query = True
                 break
             else:
-                print("Please input either y or n")
+                print("Please input either y or n") """
+        query = False
 
     # user requested to load the present file
     if not query:
@@ -484,14 +482,18 @@ def convert_scale(compound_score):
 # Checks for correlation between a list of incident scores and sentiment scores for airlines
 def analyze_data(airline_scores, reviews, title):
     incident_scores = []
+    names = []
     for airline in airline_scores:
         incident_scores.append(airline_scores[airline])
+        names.append(airline)
     review_scores = []
     for airline in reviews:
         review_scores.append(reviews[airline][1])
 
     plt.figure(figsize=(8, 6))
     plt.scatter(incident_scores, review_scores, color='green', alpha=0.7)
+    for i in range(len(names)):
+        plt.text(incident_scores[i], review_scores[i], names[i])
     plt.title(title)
     plt.xlabel("Incident Score")
     plt.ylabel("Sentiment Score")
