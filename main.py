@@ -6,6 +6,7 @@ import pickle
 from nltk.sentiment import SentimentIntensityAnalyzer
 from scipy import stats
 import matplotlib.pyplot as plt
+from transformers import pipeline
 
 def main():
     ##### AIRLINE INCIDENT DATA #####
@@ -15,7 +16,7 @@ def main():
     print(f"Number of records found/retrieved: {len(airlines)}")
 
     # next we need to group these records by airline
-    grouped_airlines = group_sort_airlines(airlines) 
+    grouped_airlines = group_sort_airlines(airlines)
 
 
     ##### CUSTOMER REVIEW DATA #####
@@ -33,6 +34,7 @@ def main():
     ##
     ## TEST 1, minimum incidents required = 8 ##
     ##
+    ##
     title = "Correlation Min 8"
 
     # get the airlines with at least 8 incidents and compute average incident score for each
@@ -40,61 +42,67 @@ def main():
 
     # get the review records for airlines that we have a score for, then analyze them
     reviews = get_review_records(review_df, airline_scores.keys())
-    analyze_reviews(reviews)
+    review_scores = analyze_reviews(reviews)
 
     print("\nAverage incident scores:")
     for airline in airline_scores:
         print(f"{airline}: {airline_scores[airline]}")
 
     print("\nAverage sentiments:")
-    for airline in reviews:
-        print(f"{airline}: {reviews[airline][1]}")
+    for airline in review_scores:
+        print(f"{airline} VADER: {review_scores[airline]['vader']}")
+        #print(f"{airline} BERT: {review_scores[airline]['bert']}")
 
-    analyze_data(airline_scores, reviews, title)
+    # plot a graph and calculate correlations
+    analyze_data(airline_scores, review_scores, title)
 
     ##
     ## TEST 2, minimum incidents required = 3 ##
     ##
+    ##
     title = "Correlation Min 3"
 
-    # get the airlines with at least 8 incidents and compute average incident score for each
+    # get the airlines with at least 3 incidents and compute average incident score for each
     airline_scores = score_airlines(grouped_airlines, 3)
 
     # get the review records for airlines that we have a score for, then analyze them
     reviews = get_review_records(review_df, airline_scores.keys())
-    analyze_reviews(reviews)
+    review_scores = analyze_reviews(reviews)
 
     print("\nAverage incident scores:")
     for airline in airline_scores:
         print(f"{airline}: {airline_scores[airline]}")
 
     print("\nAverage sentiments:")
-    for airline in reviews:
-        print(f"{airline}: {reviews[airline][1]}")
+    for airline in review_scores:
+        print(f"{airline} VADER: {review_scores[airline]['vader']}")
 
-    analyze_data(airline_scores, reviews, title)
+    # plot a graph and calculate correlations
+    analyze_data(airline_scores, review_scores, title)
 
     ##
     ## TEST 3, minimum incidents required = 10 ##
     ##
+    ##
     title = "Correlation Min 10"
 
-    # get the airlines with at least 8 incidents and compute average incident score for each
+    # get the airlines with at least 10 incidents and compute average incident score for each
     airline_scores = score_airlines(grouped_airlines, 10)
 
     # get the review records for airlines that we have a score for, then analyze them
     reviews = get_review_records(review_df, airline_scores.keys())
-    analyze_reviews(reviews)
+    review_scores = analyze_reviews(reviews)
 
     print("\nAverage incident scores:")
     for airline in airline_scores:
         print(f"{airline}: {airline_scores[airline]}")
 
     print("\nAverage sentiments:")
-    for airline in reviews:
-        print(f"{airline}: {reviews[airline][1]}")
+    for airline in review_scores:
+        print(f"{airline} VADER: {review_scores[airline]['vader']}")
 
-    analyze_data(airline_scores, reviews, title)
+    # plot a graph and calculate correlations
+    analyze_data(airline_scores, review_scores, title)
 
 
 # takes user prompt to either load incident records from file(if exists) or fetch from the web
@@ -424,7 +432,6 @@ def score_airlines(grouped_airlines, min_records):
 
             avg = sum / (2 * len(grouped_airlines[airline_name]))
 
-            #airline_scores.append((airline_name, avg))
             airline_scores[airline_name] = avg
 
     return airline_scores
@@ -447,33 +454,50 @@ def get_review_records(df, airline_names):
             if df.iloc[i, 1].upper() in name:
                 # we have a match! add the review record to the dict
                 # reviews[name] = [[id, review text, sentiment placeholder], avg]
-                review = [df.iloc[i, 21], df.iloc[i, 11], -1]
+                #review = [df.iloc[i, 21], df.iloc[i, 11], -1]
+                review = [df.iloc[i, 11]]
                 if name not in reviews.keys():
-                    reviews[name] = [[review], 0]
+                    #reviews[name] = [[review], 0]
+                    reviews[name] = [review]
                 else:
-                    reviews[name][0].append(review)
+                    #reviews[name][0].append(review)
+                    reviews[name].append(review)
 
     return reviews
 
 # analyzes the review text for a dictionary of reviews by airline
+# Two different methods are used to analyze the review texts
 def analyze_reviews(airline_reviews):
-    # initialize the sentiment intensity analyzer
+    # airline review score dict
+    review_scores = {}
+
+    ## VADER sentiment Analyzer
+    ## Simpler model of the two
     sia = SentimentIntensityAnalyzer()
+
+    ## BERT sentiment analyzer
+    ## More advanced, should give better results
+    #sentiment_pipeline = pipeline('sentiment-analysis')
 
     # iterate through each airline
     for airline in airline_reviews:
+        review_scores[airline] = {}
+
         #print(f"Analyzing sentiment for {airline}!")
-        sum = 0
+        vader_sum = 0
+        #bert_sum = 0
         
         # then iterate over every review for that airline
-        review_list = airline_reviews[airline][0]
+        review_list = airline_reviews[airline]
         for review in review_list:
-            sentiment = sia.polarity_scores(review[1])
-            review[2] = convert_scale(sentiment['compound'])
-            sum += review[2]
+            vader_sentiment = sia.polarity_scores(review[0])
+            vader_sum += convert_scale(vader_sentiment['compound']) 
 
         # calculate the average for the airline
-        airline_reviews[airline][1] = sum / len(review_list)
+        #airline_reviews[airline][1] = sum / len(review_list)
+        review_scores[airline]['vader'] = vader_sum / len(review_list)
+
+    return review_scores
 
 # converts the VADER compound score(-1 to 1) to a scale from 1 to 10
 def convert_scale(compound_score):
@@ -481,15 +505,19 @@ def convert_scale(compound_score):
 
 # Checks for correlation between a list of incident scores and sentiment scores for airlines
 def analyze_data(airline_scores, reviews, title):
+    # create a list of just the incident scores and a name list to label data points
     incident_scores = []
     names = []
     for airline in airline_scores:
         incident_scores.append(airline_scores[airline])
         names.append(airline)
+
+    # create a list of just the review scores
     review_scores = []
     for airline in reviews:
-        review_scores.append(reviews[airline][1])
+        review_scores.append(reviews[airline]['vader'])
 
+    # plot the graph
     plt.figure(figsize=(8, 6))
     plt.scatter(incident_scores, review_scores, color='green', alpha=0.7)
     for i in range(len(names)):
@@ -500,6 +528,7 @@ def analyze_data(airline_scores, reviews, title):
     plt.grid(True)
     plt.show()
 
+    # perform the correlation calculations
     result_spearman = stats.spearmanr(review_scores, incident_scores)
     print(f"Spearman Result: {result_spearman}")
 
