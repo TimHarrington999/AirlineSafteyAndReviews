@@ -9,101 +9,67 @@ import matplotlib.pyplot as plt
 from transformers import pipeline
 
 def main():
-    ##### AIRLINE INCIDENT DATA #####
+    # First, let us check for results data saved as a file
+    # BERT takes a long time to process unfortunately, this should save time
+    results_file_path = "results.pkl"
+    results = load_results(results_file_path)
 
-    # we'll begin by pulling in a record of airline incidents
-    airlines = get_airline_incident_records()
-    print(f"Number of records found/retrieved: {len(airlines)}")
+    # if there are no saved results, it will be equal to None
+    if results is None:
+        # unfortunately there was no saved results, do hard work *sigh*
 
-    # next we need to group these records by airline
-    grouped_airlines = group_sort_airlines(airlines)
+        ##### AIRLINE INCIDENT DATA #####
 
+        # we'll begin by pulling in a record of airline incidents
+        airlines = get_airline_incident_records()
+        print(f"Number of records found/retrieved: {len(airlines)}")
 
-    ##### CUSTOMER REVIEW DATA #####
-
-    # first, read the csv file of customer review data
-    # col 1: Airline name
-    # col 11: Review Text that we will be using NLP to analyze
-    # col 18: If the Review was verified or not
-    # col 21: Review ID
-    review_df = pd.read_csv("AirlineReviews.csv")
+        # next we need to group these records by airline
+        grouped_airlines = group_sort_airlines(airlines)
 
 
-    ##### DATA ANALYSIS #####
+        ##### CUSTOMER REVIEW DATA #####
 
-    ##
-    ## TEST 1, minimum incidents required = 8 ##
-    ##
-    ##
-    title = "Correlation Min 8"
+        # first, read the csv file of customer review data
+        # col 1: Airline name
+        # col 11: Review Text that we will be using NLP to analyze
+        # col 18: If the Review was verified or not
+        # col 21: Review ID
+        review_df = pd.read_csv("AirlineReviews.csv")
 
-    # get the airlines with at least 8 incidents and compute average incident score for each
-    airline_scores = score_airlines(grouped_airlines, 8)
+    #### DATA ANALYSIS ####
 
-    # get the review records for airlines that we have a score for, then analyze them
-    reviews = get_review_records(review_df, airline_scores.keys())
-    review_scores = analyze_reviews(reviews)
+    # test 1, minimum number of incident records is 8
+    execute_test(grouped_airlines, review_df, 8)
 
-    print("\nAverage incident scores:")
-    for airline in airline_scores:
-        print(f"{airline}: {airline_scores[airline]}")
+    # test 2, minimum number of incident records is 3
+    execute_test(grouped_airlines, review_df, 3)
 
-    print("\nAverage sentiments:")
-    for airline in review_scores:
-        print(f"{airline} VADER: {review_scores[airline]['vader']}")
-        #print(f"{airline} BERT: {review_scores[airline]['bert']}")
+    # test 3, minimum number of incident records is 10
+    execute_test(grouped_airlines, review_df, 10)
 
-    # plot a graph and calculate correlations
-    analyze_data(airline_scores, review_scores, title)
+# performs a test with a specified minimum number of incident records
+def execute_test(grouped_airlines, review_df, min_incidents):
+    title = f"Correlation Min {min_incidents}"
 
-    ##
-    ## TEST 2, minimum incidents required = 3 ##
-    ##
-    ##
-    title = "Correlation Min 3"
-
-    # get the airlines with at least 3 incidents and compute average incident score for each
-    airline_scores = score_airlines(grouped_airlines, 3)
+    # get the airlines with at least min_incidents and compute the average incident score for each
+    airline_incident_scores = get_airline_incident_score(grouped_airlines, min_incidents)
 
     # get the review records for airlines that we have a score for, then analyze them
-    reviews = get_review_records(review_df, airline_scores.keys())
-    review_scores = analyze_reviews(reviews)
+    reviews = get_review_records(review_df, airline_incident_scores.keys())
+    airline_review_scores = get_airline_review_scores(reviews)
 
     print("\nAverage incident scores:")
-    for airline in airline_scores:
-        print(f"{airline}: {airline_scores[airline]}")
+    for airline in airline_incident_scores:
+        print(f"{airline}: {airline_incident_scores[airline]}")
 
     print("\nAverage sentiments:")
-    for airline in review_scores:
-        print(f"{airline} VADER: {review_scores[airline]['vader']}")
+    for airline in airline_review_scores:
+        print(f"{airline} VADER: {airline_review_scores[airline]['vader']}")
+        print(f"{airline} BERT: {airline_review_scores[airline]['bert']}")
 
     # plot a graph and calculate correlations
-    analyze_data(airline_scores, review_scores, title)
-
-    ##
-    ## TEST 3, minimum incidents required = 10 ##
-    ##
-    ##
-    title = "Correlation Min 10"
-
-    # get the airlines with at least 10 incidents and compute average incident score for each
-    airline_scores = score_airlines(grouped_airlines, 10)
-
-    # get the review records for airlines that we have a score for, then analyze them
-    reviews = get_review_records(review_df, airline_scores.keys())
-    review_scores = analyze_reviews(reviews)
-
-    print("\nAverage incident scores:")
-    for airline in airline_scores:
-        print(f"{airline}: {airline_scores[airline]}")
-
-    print("\nAverage sentiments:")
-    for airline in review_scores:
-        print(f"{airline} VADER: {review_scores[airline]['vader']}")
-
-    # plot a graph and calculate correlations
-    analyze_data(airline_scores, review_scores, title)
-
+    analyze_data(airline_incident_scores, airline_review_scores, title)
 
 # takes user prompt to either load incident records from file(if exists) or fetch from the web
 def get_airline_incident_records():
@@ -386,18 +352,20 @@ def group_sort_airlines(airlines):
                  ]
 
     # iterate over the dictionary of airlines
-    for airline in airlines:
+    for nnumber in airlines:
+        airline_name = airlines[nnumber][0][0]
+
         # first check to make sure we don't have one of the blacklisted names
-        if airlines[airline][0][0] in blacklist:
+        if airline_name in blacklist:
             continue
 
         # if we have encountered a new airline name, create a new entry in the dict
-        elif airlines[airline][0][0] not in grouped_airlines.keys():
-            grouped_airlines[airlines[airline][0][0]] = [(airline, airlines[airline])]
+        elif airline_name not in grouped_airlines.keys():
+            grouped_airlines[airline_name] = [(nnumber, airlines[nnumber])]
 
         # if we encounter an airline name already in the dict, update the existing listing
         else:
-            grouped_airlines[airlines[airline][0][0]].append((airline, airlines[airline]))
+            grouped_airlines[airline_name].append((nnumber, airlines[nnumber]))
     
     sorted_airlines = dict(sorted(grouped_airlines.items()))
 
@@ -409,7 +377,7 @@ def group_sort_airlines(airlines):
     return sorted_airlines
 
 # creates an incident score for each airline in a grouped airline dictionary
-def score_airlines(grouped_airlines, min_records):
+def get_airline_incident_score(grouped_airlines, min_records):
     airline_scores = {}
 
     # convert the injury and damage level to a weight
@@ -428,7 +396,9 @@ def score_airlines(grouped_airlines, min_records):
             # we have a qualifying airline, perform the weighted scoring
             sum = 0
             for incident_record in grouped_airlines[airline_name]:
-                sum += (rubric[incident_record[1][1]] + rubric[incident_record[1][2]])
+                injury = incident_record[1][1]
+                damage = incident_record[1][2]
+                sum += (rubric[injury] + rubric[damage])
 
             avg = sum / (2 * len(grouped_airlines[airline_name]))
 
@@ -455,19 +425,17 @@ def get_review_records(df, airline_names):
                 # we have a match! add the review record to the dict
                 # reviews[name] = [[id, review text, sentiment placeholder], avg]
                 #review = [df.iloc[i, 21], df.iloc[i, 11], -1]
-                review = [df.iloc[i, 11]]
+                review = [df.iloc[i, 11]] # we only really need the review text
                 if name not in reviews.keys():
-                    #reviews[name] = [[review], 0]
                     reviews[name] = [review]
                 else:
-                    #reviews[name][0].append(review)
                     reviews[name].append(review)
 
     return reviews
 
 # analyzes the review text for a dictionary of reviews by airline
 # Two different methods are used to analyze the review texts
-def analyze_reviews(airline_reviews):
+def get_airline_review_scores(airline_reviews):
     # airline review score dict
     review_scores = {}
 
@@ -477,7 +445,10 @@ def analyze_reviews(airline_reviews):
 
     ## BERT sentiment analyzer
     ## More advanced, should give better results
-    #sentiment_pipeline = pipeline('sentiment-analysis')
+    # We could train BERT on our own review data, but that would require a labeling of pos, neg, or neutral
+    # to already be present in the dataset
+    # BERT do be slow tho...
+    sentiment_pipeline = pipeline('sentiment-analysis', model='distilbert-base-uncased-finetuned-sst-2-english')    
 
     # iterate through each airline
     for airline in airline_reviews:
@@ -485,23 +456,46 @@ def analyze_reviews(airline_reviews):
 
         #print(f"Analyzing sentiment for {airline}!")
         vader_sum = 0
-        #bert_sum = 0
+        bert_sum = 0
         
         # then iterate over every review for that airline
         review_list = airline_reviews[airline]
         for review in review_list:
             vader_sentiment = sia.polarity_scores(review[0])
-            vader_sum += convert_scale(vader_sentiment['compound']) 
+            vader_sum += convert_vader_scale(vader_sentiment['compound'])
+
+            # before using BERT, we have to chunk the review text
+            chunks = split_into_chunks(review[0], chunk_size=300)
+
+            # then analyze each chunk and average the sentiment scores
+            for chunk in chunks:
+                bert_sum += convert_bert_scale(sentiment_pipeline(chunk)[0])
 
         # calculate the average for the airline
-        #airline_reviews[airline][1] = sum / len(review_list)
         review_scores[airline]['vader'] = vader_sum / len(review_list)
+        review_scores[airline]['bert'] = bert_sum / len(review_list)
 
     return review_scores
 
 # converts the VADER compound score(-1 to 1) to a scale from 1 to 10
-def convert_scale(compound_score):
-    return round((compound_score + 1) * 4.5 + 1)
+def convert_vader_scale(score):
+    return round((score + 1) * 4.5 + 1)
+
+# converts the BERT sentiment score to a scale from 1 to 10
+# the sentiment is binary with a label, and the score is actually just a confidence metric
+def convert_bert_scale(sentiment):
+    label = sentiment['label']
+    score = sentiment['score']
+
+    if label == 'POSITIVE':
+        return round(score * 5 + 5) # Map [0.5, 1.0] to [6, 10]
+    else:
+        return round((1 - score) * 5 + 1) # Map [0.0, 0.5] to [1, 5]
+
+# splits text into chunks of size no bigger than max tokens
+def split_into_chunks(text, chunk_size=300):
+    words = text.split() # get the words from the text
+    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # Checks for correlation between a list of incident scores and sentiment scores for airlines
 def analyze_data(airline_scores, reviews, title):
@@ -512,28 +506,65 @@ def analyze_data(airline_scores, reviews, title):
         incident_scores.append(airline_scores[airline])
         names.append(airline)
 
-    # create a list of just the review scores
-    review_scores = []
+    # create a list of just the review scores, one for vader and another for bert
+    vader_review_scores = []
+    bert_review_scores = []
     for airline in reviews:
-        review_scores.append(reviews[airline]['vader'])
+        vader_review_scores.append(reviews[airline]['vader'])
+        bert_review_scores.append(reviews[airline]['bert'])
 
-    # plot the graph
-    plt.figure(figsize=(8, 6))
-    plt.scatter(incident_scores, review_scores, color='green', alpha=0.7)
+    # plot the graph for the vader sentiment analyzer
+    """ plt.figure(figsize=(8, 6))
+    plt.scatter(incident_scores, vader_review_scores, color='green', alpha=0.7)
     for i in range(len(names)):
-        plt.text(incident_scores[i], review_scores[i], names[i])
-    plt.title(title)
+        plt.text(incident_scores[i], vader_review_scores[i], names[i])
+    plt.title(f"{title} VADER")
     plt.xlabel("Incident Score")
     plt.ylabel("Sentiment Score")
     plt.grid(True)
-    plt.show()
+    plt.show() """
 
     # perform the correlation calculations
-    result_spearman = stats.spearmanr(review_scores, incident_scores)
+    print("VADER Correlation:")
+    result_spearman = stats.spearmanr(vader_review_scores, incident_scores)
     print(f"Spearman Result: {result_spearman}")
 
-    result_pearson = stats.pearsonr(review_scores, incident_scores)
+    result_pearson = stats.pearsonr(vader_review_scores, incident_scores)
     print(f"Pearson Result: {result_pearson}")
+
+    # then plot the graph for the bert sentiment analyzer
+    """ plt.figure(figsize=(8, 6))
+    plt.scatter(incident_scores, bert_review_scores, color='green', alpha=0.7)
+    for i in range(len(names)):
+        plt.text(incident_scores[i], bert_review_scores[i], names[i])
+    plt.title(f"{title} BERT")
+    plt.xlabel("Incident Score")
+    plt.ylabel("Sentiment Score")
+    plt.grid(True)
+    plt.show() """
+
+    # perform the correlation calculations
+    print("BERT Correlation")
+    result_spearman = stats.spearmanr(bert_review_scores, incident_scores)
+    print(f"Spearman Result: {result_spearman}")
+
+    result_pearson = stats.pearsonr(bert_review_scores, incident_scores)
+    print(f"Pearson Result: {result_pearson}")
+
+# retrieves the final results dictionary from a file
+def load_results(file_path):
+    with open(file_path, "rb") as file:
+        try:
+            results = pickle.load(file)
+            return results
+        except:
+            # some error loading the file occurred, return None
+            return None
+
+# saves the final result dictionary as a pickle object to a file
+def save_results(file_path, results):
+    with open(file_path, "wb") as file:
+        pickle.dump(results, file)
 
 # prints the columns in an excel file
 def test_print_df_cols(df):
