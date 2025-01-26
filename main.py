@@ -50,62 +50,32 @@ def main():
 
     #### DATA ANALYSIS ####
 
-    # test 1, minimum number of incident records is 8
-    execute_test(results, 8)
+    # print the result data
+    print_results(results)
 
-    # test 2, minimum number of incident records is 3
-    execute_test(results, 3)
+    # generate scatter plots
+    min_incidents_arr = [8, 3, 10]
+    for i in range(len(min_incidents_arr)):
+        title = f"Correlation Min {min_incidents_arr[i]}"
+        analyze_data(results, title, min_incidents_arr[i])
 
-    # test 3, minimum number of incident records is 10
-    execute_test(results, 10)
-
-# performs a test with a specified minimum number of incident records
-""" def execute_test(grouped_airlines, review_df, min_incidents):
-    title = f"Correlation Min {min_incidents}"
-
-    # get the airlines with at least min_incidents and compute the average incident score for each
-    airline_incident_scores = get_airline_incident_scores(grouped_airlines, min_incidents)
-
-    # get the review records for airlines that we have a score for, then analyze them
-    reviews = get_review_records(review_df, airline_incident_scores.keys())
-    airline_review_scores = get_airline_review_scores(reviews)
-
-    print("\nAverage incident scores:")
-    for airline in airline_incident_scores:
-        print(f"{airline}: {airline_incident_scores[airline]}")
-
-    print("\nAverage sentiments:")
-    for airline in airline_review_scores:
-        print(f"{airline} VADER: {airline_review_scores[airline]['vader']}")
-        print(f"{airline} BERT: {airline_review_scores[airline]['bert']}")
-
-    # plot a graph and calculate correlations
-    analyze_data(airline_incident_scores, airline_review_scores, title) """
-
-# performs a test with a specified minimum number of incident records
-def execute_test(results, min_incidents):
-
-    # print the computed data
-    print(f"\n##\n##### Scores for test with {min_incidents} minimum incidents:\n##")
+    
+# prints a dictionary of results
+def print_results(results):
+    print(f"\n##\n##### AIRLINE SCORES: #####\n##")
     for airline in results:
-        if results[airline]['num_incidents'] >= min_incidents:
-            airline_incident_scores = results[airline]['incident_scores']
-            airline_review_scores = results[airline]['review_scores']
-            print(f"\n{airline}:")
-            print(f"\tIncident Score: {airline_incident_scores['avg']}")
-            print("\tInjury level counts:")
-            for level in airline_incident_scores['injury']:
-                print(f"\t\t{level}: {airline_incident_scores['injury'][level]}")
-            print("\tDamage level counts:")
-            for level in airline_incident_scores['damage']:
-                print(f"\t\t{level}: {airline_incident_scores['damage'][level]}")
-            print(f"\tVADER: {airline_review_scores['vader']}")
-            print(f"\tBERT: {airline_review_scores['bert']}")
-
-    # create some graphs with this data
-    title = f"Correlation Min {min_incidents}"
-    analyze_data(results, title, min_incidents)
-
+        airline_incident_scores = results[airline]['incident_scores']
+        airline_review_scores = results[airline]['review_scores']
+        print(f"\n{airline}:")
+        print(f"\tIncident Score: {airline_incident_scores['avg']}")
+        print("\tInjury level counts:")
+        for level in airline_incident_scores['injury']:
+            print(f"\t\t{level}: {airline_incident_scores['injury'][level]}")
+        print("\tDamage level counts:")
+        for level in airline_incident_scores['damage']:
+            print(f"\t\t{level}: {airline_incident_scores['damage'][level]}")
+        print(f"\tVADER: {airline_review_scores['vader']}")
+        print(f"\tBERT: {airline_review_scores['bert']}")
 
 # compute all data for the airlines that have at least min_incidents incidents
 # returns the results dictionary
@@ -590,6 +560,12 @@ def split_into_chunks(text, chunk_size=300):
 
 # Checks for correlation between a list of incident scores and sentiment scores for airlines
 def analyze_data(results, title, min_incidents):
+    print(f"\n{title}")
+    print("Airlines included: ")
+    for airline in results:
+        if results[airline]['num_incidents'] >= min_incidents:
+            print(f"\t{airline}")
+
     # create a list of the airline names with at least min_incidents incidents
     airline_names = []
     for airline in results:
@@ -608,6 +584,14 @@ def analyze_data(results, title, min_incidents):
         vader_review_scores.append(results[airline]['review_scores']['vader'])
         bert_review_scores.append(results[airline]['review_scores']['bert'])
 
+    # perform the correlation calculations
+    print("\nVADER Correlation:")
+    result_spearman = stats.spearmanr(vader_review_scores, incident_scores)
+    print(f"\tSpearman Result: {result_spearman}")
+
+    result_pearson = stats.pearsonr(vader_review_scores, incident_scores)
+    print(f"\tPearson Result: {result_pearson}")
+
     # plot the graph for the vader sentiment analyzer
     plt.figure(figsize=(8, 6))
     plt.scatter(incident_scores, vader_review_scores, color='green', alpha=0.7)
@@ -620,11 +604,11 @@ def analyze_data(results, title, min_incidents):
     plt.show()
 
     # perform the correlation calculations
-    print("\nVADER Correlation:")
-    result_spearman = stats.spearmanr(vader_review_scores, incident_scores)
+    print("BERT Correlation")
+    result_spearman = stats.spearmanr(bert_review_scores, incident_scores)
     print(f"\tSpearman Result: {result_spearman}")
 
-    result_pearson = stats.pearsonr(vader_review_scores, incident_scores)
+    result_pearson = stats.pearsonr(bert_review_scores, incident_scores)
     print(f"\tPearson Result: {result_pearson}")
 
     # then plot the graph for the bert sentiment analyzer
@@ -637,14 +621,6 @@ def analyze_data(results, title, min_incidents):
     plt.ylabel("Sentiment Score")
     plt.grid(True)
     plt.show()
-
-    # perform the correlation calculations
-    print("BERT Correlation")
-    result_spearman = stats.spearmanr(bert_review_scores, incident_scores)
-    print(f"\tSpearman Result: {result_spearman}")
-
-    result_pearson = stats.pearsonr(bert_review_scores, incident_scores)
-    print(f"\tPearson Result: {result_pearson}")
 
 # retrieves the final results dictionary from a file
 def load_results(file_path):
