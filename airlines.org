@@ -1,4 +1,13 @@
 Project: The Correlation Between Airline Sentiment and Airline Incidents
+The goal of this project is to look into the possibility of a correlation
+between airline customer reviews and incidents for those airlines. In other
+words, do negative reviews predict the amount/severity of airline
+incidents? I go through the results below but you can also run the program
+yourself to check the data out on your own. As long as you have the
+results.pkl file locally, the results will print shortly. If for some
+reason you dont have results.pkl file, the program will take a considerable
+amount of time to execute thanks to the BERT sentiment analyzer. On my
+machine it took about 30-45 minutes.
 
 
 Data Used:
@@ -15,10 +24,12 @@ https://www.ntsb.gov/safety/Pages/research.aspx and saved in a file named
 NTSB doesn't directly mention the air carrier involved with each incident
 but the registration number, I had to run each registration number through
 the FAA website at:
-https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry. Since there
-are hundreds of records to work with, I wrote up a script to run the
+https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry. 
+
+Since there are hundreds of records to work with, I wrote up a script to run the
 numbers through this site automatically and then wrote the results to a new
-file that I named 'registration_info.pkl'.
+file that I named 'registration_info.pkl'. The overall results are stored
+in a file named 'results.pkl' once they are calculated.
 
 Development Process:
 The development began with a search for datasets. I was lucky to be able to
@@ -64,13 +75,20 @@ across a much larger data set for customer reviews. The original one that I
 had found only had 23171 reviews that were only a few years old. The new
 one has 129455 reviews that date back to 2001. 
 
+Next I implemented another text sentiment analyzer (BERT) alongside the
+original VADER one. BERT should be more sophisticated so ideally it will
+give us a clearer view on the correlation results. I also kept count of the
+injury/damage levels for each airline and display these in a graph at the
+end of the calculations. 
+
 Results:
 Originally, I was going to compare a count of incidents for each airline to
 its review score. However, I decided it would be better to use an incident
 score instead because the busier airlines are likely going to have higher incident
 counts simply because they have more business. I ran the numbers through
 both the pearson and Spearman Correlation functions from scipy and got the
-following results:
+following results with 8 minimum incident records and with the VADER
+sentiment analyzer:
 
 Pearson:
 Correlation = -0.7363978839244929
@@ -119,6 +137,53 @@ first though is that there isn't enough data here to make a solid
 conclusion, but that the existence of a real correlation here is very
 possible.
 
+This is all of the data that we get using the VADER sentiment analyzer. The
+results with the BERT analyzer are a little different. First we have the
+results for airlines with at least 8 incident records:
+
+Pearson:
+Correlation = -0.6551104136071436
+pvalue = 0.2301443750281
+
+Spearman:
+Correlation = -0.8999999999999998
+pvalue = 0.03738607346849874
+
+Next we have the airlines with at least 3 incident records:
+
+Pearson:
+Correlation = -0.19702666761052856
+pvalue = 0.6719713900601967
+
+Spearman:
+Correlation = -0.14285714285714288
+pvalue = 0.7599453002180929
+
+And finally we have the 4 airlines that have at least 10 incident records:
+
+Pearson:
+Correlation = -0.7432026849443889
+pvalue = 0.2567973150556111
+
+Spearman:
+Correlation = -0.7999999999999999
+pvalue = 0.20000000000000007
+
+There are only two places where the two different sentiment models differ
+in their analysis of a correlation. The first is in the test with a minimum
+incident record of 3, the Spearman result indicated that there was a strong
+negative correlation under the BERT model, whereas the VADER model did
+not. The next discrepancy occurs in the test with minimum incident record
+of 10. The Pearson result indicated a strong negative correlation under the
+VADER model and no correlation under the BERT model.
+
+I believe these differences further prove that there just is not enough
+data to make a solid conclusion. It is possible that the BERT model is
+correct and not the VADER model, or even vice versa. I believe I would need
+to run tests using a much wider data set in order to get a solid
+conclusion. At this point, the existence of a correlation between reviews
+and airline incidents could exist or not exist. 
+
 #+begin_src python
 import os
 import pandas as pd
@@ -128,96 +193,127 @@ import pickle
 from nltk.sentiment import SentimentIntensityAnalyzer
 from scipy import stats
 import matplotlib.pyplot as plt
+import numpy as np
+from transformers import pipeline
 
 def main():
-    ##### AIRLINE INCIDENT DATA #####
+    # First, let us check for results data saved as a file
+    # Unfortunately, BERT takes a long time to process
+    # we'll run once and save the results to file
+    results_file_path = "results.pkl"
+    compute = False
+    try:
+        results = load_results(results_file_path)
+    except FileNotFoundError:
+        compute = True
+        print("Final Results file was not found, performing computations.")
+        print("This will take a while...")
 
-    # we'll begin by pulling in a record of airline incidents
-    airlines = get_airline_incident_records()
-    print(f"Number of records found/retrieved: {len(airlines)}")
+    # if there are no saved results, we must compute
+    if compute:
 
-    # next we need to group these records by airline
-    grouped_airlines = group_sort_airlines(airlines) 
+        ##### AIRLINE INCIDENT DATA #####
 
+        # we'll begin by pulling in a record of commercial airline incidents from the excel file
+        airlines = get_airline_incident_records()
+        print(f"Number of records found/retrieved: {len(airlines)}")
 
-    ##### CUSTOMER REVIEW DATA #####
-
-    # first, read the csv file of customer review data
-    # col 1: Airline name
-    # col 11: Review Text that we will be using NLP to analyze
-    # col 18: If the Review was verified or not
-    # col 21: Review ID
-    review_df = pd.read_csv("AirlineReviews.csv")
+        # next we need to group these records by airline, place into a dictionary
+        grouped_airlines = group_sort_airlines(airlines)
 
 
-    ##### DATA ANALYSIS #####
+        ##### CUSTOMER REVIEW DATA #####
 
-    ##
-    ## TEST 1, minimum incidents required = 8 ##
-    ##
-    title = "Correlation Min 8"
+        # first, read the csv file of customer review data
+        review_df = pd.read_csv("AirlineReviews.csv")
 
-    # get the airlines with at least 8 incidents and compute average incident score for each
-    airline_scores = score_airlines(grouped_airlines, 8)
+        ##### DATA COMPUTATION #####
+
+        # Compute all data for airlines that have a minimum incident count of at least 3
+        min_incidents = 3
+        results = compute_airline_data(grouped_airlines, review_df, min_incidents)
+
+        # save the results as a pickle file
+        save_results(results_file_path, results)
+
+    #### DATA ANALYSIS ####
+
+    # print the result data
+    print_results(results)
+
+    # generate scatter plots
+    print(f"\n##\n##### Correlation Calculations: #####\n##")
+    min_incidents_arr = [8, 3, 10]
+    for i in range(len(min_incidents_arr)):
+        title = f"Correlation Min {min_incidents_arr[i]}"
+        analyze_data(results, title, min_incidents_arr[i])
+
+    
+# prints a dictionary of results
+def print_results(results):
+    print(f"\n##\n##### AIRLINE SCORES: #####\n##")
+    for airline in results:
+        # print the results data for each airline
+        airline_incident_scores = results[airline]['incident_scores']
+        airline_review_scores = results[airline]['review_scores']
+
+        print(f"\n{airline}:")
+        print(f"\tIncident Score: {airline_incident_scores['avg']}")
+
+        print("\tInjury level counts:")
+        for level in airline_incident_scores['injury']:
+            print(f"\t\t{level}: {airline_incident_scores['injury'][level]}")
+
+        print("\tDamage level counts:")
+        for level in airline_incident_scores['damage']:
+            print(f"\t\t{level}: {airline_incident_scores['damage'][level]}")
+
+        print(f"\tVADER: {airline_review_scores['vader']}")
+        print(f"\tBERT: {airline_review_scores['bert']}")
+
+        # then create a graph to visualize the injury and damage levels
+        categories = ['None', 'Minor', 'Serious/Substantial', 'Fatal/Destroyed']
+        injury_values = airline_incident_scores['injury'].values()
+        damage_values = airline_incident_scores['damage'].values()
+
+        x = np.arange(len(categories))
+        bar_width = 0.35
+
+        plt.bar(x - bar_width/2, injury_values, bar_width, label='Injury Levels', color='b')
+        plt.bar(x + bar_width/2, damage_values, bar_width, label='Damage Levels', color='g')
+
+        plt.xlabel('Injury/Damage Levels')
+        plt.ylabel('Counts')
+        plt.title(f"{airline} Injury and Damage Counts")
+        plt.xticks(x, categories)
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+
+
+
+# compute all data for the airlines that have at least min_incidents incidents
+# returns the results dictionary
+def compute_airline_data(grouped_airlines, review_df, min_incidents):    
+    # get the airlines with at least min_incidents and compute the average incident score for each
+    airline_incident_scores = get_airline_incident_scores(grouped_airlines, min_incidents)
 
     # get the review records for airlines that we have a score for, then analyze them
-    reviews = get_review_records(review_df, airline_scores.keys())
-    analyze_reviews(reviews)
+    reviews = get_review_records(review_df, airline_incident_scores.keys())
+    airline_review_scores = get_airline_review_scores(reviews)
 
-    print("\nAverage incident scores:")
-    for airline in airline_scores:
-        print(f"{airline}: {airline_scores[airline]}")
+    # set up the results dictionary
+    results = {}
+    
+    airlines = airline_review_scores.keys()
+    for airline in airlines:
+        results[airline] = {}
+        results[airline]['review_scores'] = airline_review_scores[airline]
+        results[airline]['incident_scores'] = airline_incident_scores[airline]
+        results[airline]['num_incidents'] = len(grouped_airlines[airline])
 
-    print("\nAverage sentiments:")
-    for airline in reviews:
-        print(f"{airline}: {reviews[airline][1]}")
-
-    analyze_data(airline_scores, reviews, title)
-
-    ##
-    ## TEST 2, minimum incidents required = 3 ##
-    ##
-    title = "Correlation Min 3"
-
-    # get the airlines with at least 8 incidents and compute average incident score for each
-    airline_scores = score_airlines(grouped_airlines, 3)
-
-    # get the review records for airlines that we have a score for, then analyze them
-    reviews = get_review_records(review_df, airline_scores.keys())
-    analyze_reviews(reviews)
-
-    print("\nAverage incident scores:")
-    for airline in airline_scores:
-        print(f"{airline}: {airline_scores[airline]}")
-
-    print("\nAverage sentiments:")
-    for airline in reviews:
-        print(f"{airline}: {reviews[airline][1]}")
-
-    analyze_data(airline_scores, reviews, title)
-
-    ##
-    ## TEST 3, minimum incidents required = 10 ##
-    ##
-    title = "Correlation Min 10"
-
-    # get the airlines with at least 8 incidents and compute average incident score for each
-    airline_scores = score_airlines(grouped_airlines, 10)
-
-    # get the review records for airlines that we have a score for, then analyze them
-    reviews = get_review_records(review_df, airline_scores.keys())
-    analyze_reviews(reviews)
-
-    print("\nAverage incident scores:")
-    for airline in airline_scores:
-        print(f"{airline}: {airline_scores[airline]}")
-
-    print("\nAverage sentiments:")
-    for airline in reviews:
-        print(f"{airline}: {reviews[airline][1]}")
-
-    analyze_data(airline_scores, reviews, title)
-
+    return results
 
 # takes user prompt to either load incident records from file(if exists) or fetch from the web
 def get_airline_incident_records():
@@ -228,7 +324,7 @@ def get_airline_incident_records():
         query = True
     else:
         # query the user to read the current file or refetch from the web page
-        while True:
+        """ while True:
             user_input = input("A registration info file exists: Read file instead of fetching data? (y/n): ")
             if user_input == 'y':
                 query = False
@@ -237,7 +333,8 @@ def get_airline_incident_records():
                 query = True
                 break
             else:
-                print("Please input either y or n")
+                print("Please input either y or n") """
+        query = False
 
     # user requested to load the present file
     if not query:
@@ -495,22 +592,23 @@ def group_sort_airlines(airlines):
     blacklist = ['FEDERAL EXPRESS CORP', 'FEDERAL EXPRESS CORPORATION', 'UNITED PARCEL SERVICE CO',
                  'WELLS FARGO BANK NA TRUSTEE', 'WELLS FARGO BANK NORTHWEST NA TRUSTEE',
                  'WELLS FARGO TRUST CO NA TRUSTEE', 'WILMINGTON TRUST CO TRUSTEE', 'BANK OF UTAH TRUSTEE',
-                 'REPUBLIC AIRWAYS INC', 'MESA AIRLINES INC'
-                 ]
+                 'REPUBLIC AIRWAYS INC', 'MESA AIRLINES INC']
 
     # iterate over the dictionary of airlines
-    for airline in airlines:
+    for nnumber in airlines:
+        airline_name = airlines[nnumber][0][0]
+
         # first check to make sure we don't have one of the blacklisted names
-        if airlines[airline][0][0] in blacklist:
+        if airline_name in blacklist:
             continue
 
         # if we have encountered a new airline name, create a new entry in the dict
-        elif airlines[airline][0][0] not in grouped_airlines.keys():
-            grouped_airlines[airlines[airline][0][0]] = [(airline, airlines[airline])]
+        elif airline_name not in grouped_airlines.keys():
+            grouped_airlines[airline_name] = [(nnumber, airlines[nnumber])]
 
         # if we encounter an airline name already in the dict, update the existing listing
         else:
-            grouped_airlines[airlines[airline][0][0]].append((airline, airlines[airline]))
+            grouped_airlines[airline_name].append((nnumber, airlines[nnumber]))
     
     sorted_airlines = dict(sorted(grouped_airlines.items()))
 
@@ -522,37 +620,72 @@ def group_sort_airlines(airlines):
     return sorted_airlines
 
 # creates an incident score for each airline in a grouped airline dictionary
-def score_airlines(grouped_airlines, min_records):
+def get_airline_incident_scores(grouped_airlines, min_records):
     airline_scores = {}
 
     # convert the injury and damage level to a weight
-    rubric = {
+    injury_rubric = {
         'None' : 1,
         'Minor' : 2,
         'Serious' : 3,
-        'Substantial' : 3,
         'Fatal' : 4,
+    }
+
+    damage_rubric = {
+        'None' : 1,
+        'Minor' : 2,
+        'Substantial' : 3,
         'Destroyed' : 4
     }
 
     # step through the grouped airlines dictionary and score qualifying airlines
     for airline_name in grouped_airlines:
         if len(grouped_airlines[airline_name]) >= min_records:
-            # we have a qualifying airline, perform the weighted scoring
+            # create some dictionaries to keep track of the number of occurrences of each injury/damage level
+            airline_scores[airline_name] = {}
+            airline_scores[airline_name]['injury'] = {
+                'None': 0,
+                'Minor': 0,
+                'Serious': 0,
+                'Fatal': 0
+            }
+            airline_scores[airline_name]['damage'] = {
+                'None': 0,
+                'Minor': 0,
+                'Substantial': 0,
+                'Destroyed': 0
+            }
+
             sum = 0
             for incident_record in grouped_airlines[airline_name]:
-                sum += (rubric[incident_record[1][1]] + rubric[incident_record[1][2]])
+                # get the injury and damage level
+                injury = incident_record[1][1]
+                damage = incident_record[1][2]
 
-            avg = sum / (2 * len(grouped_airlines[airline_name]))
+                # increment the counters for these levels
+                injury_counter = airline_scores[airline_name]['injury'][injury]
+                damage_counter = airline_scores[airline_name]['damage'][damage]
+                airline_scores[airline_name]['injury'][injury] = injury_counter + 1
+                airline_scores[airline_name]['damage'][damage] = damage_counter + 1
 
-            #airline_scores.append((airline_name, avg))
-            airline_scores[airline_name] = avg
+                # then add the incident avg to the running airline sum
+                sum += (injury_rubric[injury] + damage_rubric[damage])
+
+            avg = sum / (2 * len(grouped_airlines[airline_name])) # avg for the current airline
+
+            airline_scores[airline_name]['avg'] = avg
 
     return airline_scores
 
-# create a list of airline reviews that are only for the airlines with a score
+# create a list of airline reviews from the excel file that are only for the airlines with a score
 def get_review_records(df, airline_names):
     reviews = {}
+
+    # important col numbers are as follows:
+    # col 1: Airline name
+    # col 11: Review Text that we will be using NLP to analyze
+    # col 18: If the Review was verified or not
+    # col 21: Review ID
 
     # replace the NaN values in the text field, these reviews need to be left out
     df['Review'] = df['Review'].fillna('NO TEXT')
@@ -568,64 +701,165 @@ def get_review_records(df, airline_names):
             if df.iloc[i, 1].upper() in name:
                 # we have a match! add the review record to the dict
                 # reviews[name] = [[id, review text, sentiment placeholder], avg]
-                review = [df.iloc[i, 21], df.iloc[i, 11], -1]
+                #review = [df.iloc[i, 21], df.iloc[i, 11], -1]
+                review = [df.iloc[i, 11]] # we only really need the review text
                 if name not in reviews.keys():
-                    reviews[name] = [[review], 0]
+                    reviews[name] = [review]
                 else:
-                    reviews[name][0].append(review)
+                    reviews[name].append(review)
 
     return reviews
 
 # analyzes the review text for a dictionary of reviews by airline
-def analyze_reviews(airline_reviews):
-    # initialize the sentiment intensity analyzer
+# Two different methods are used to analyze the review texts
+def get_airline_review_scores(airline_reviews):
+    # airline review score dict
+    review_scores = {}
+
+    ## VADER sentiment Analyzer
+    ## Simpler model of the two
     sia = SentimentIntensityAnalyzer()
+
+    ## BERT sentiment analyzer
+    ## More advanced, should give better results
+    # We could train BERT on our own review data, but that would require a labeling of pos, neg, or neutral
+    # to already be present in the dataset
+    # BERT do be slow tho...
+    sentiment_pipeline = pipeline('sentiment-analysis', model='distilbert-base-uncased-finetuned-sst-2-english')    
 
     # iterate through each airline
     for airline in airline_reviews:
-        #print(f"Analyzing sentiment for {airline}!")
-        sum = 0
+        print(f"Analyzing {len(airline_reviews[airline])} reviews for {airline}!")
+        review_scores[airline] = {}
+
+        vader_sum = 0
+        bert_sum = 0
         
         # then iterate over every review for that airline
-        review_list = airline_reviews[airline][0]
+        review_list = airline_reviews[airline]
         for review in review_list:
-            sentiment = sia.polarity_scores(review[1])
-            review[2] = convert_scale(sentiment['compound'])
-            sum += review[2]
+            vader_sentiment = sia.polarity_scores(review[0])
+            vader_sum += convert_vader_scale(vader_sentiment['compound'])
+
+            # before using BERT, we have to chunk the review text
+            chunks = split_into_chunks(review[0], chunk_size=300)
+
+            # then analyze each chunk and average the sentiment scores
+            for chunk in chunks:
+                bert_sum += convert_bert_scale(sentiment_pipeline(chunk)[0])
 
         # calculate the average for the airline
-        airline_reviews[airline][1] = sum / len(review_list)
+        review_scores[airline]['vader'] = vader_sum / len(review_list)
+        review_scores[airline]['bert'] = bert_sum / len(review_list)
+
+    return review_scores
 
 # converts the VADER compound score(-1 to 1) to a scale from 1 to 10
-def convert_scale(compound_score):
-    return round((compound_score + 1) * 4.5 + 1)
+def convert_vader_scale(score):
+    return round((score + 1) * 4.5 + 1)
+
+# converts the BERT sentiment score to a scale from 1 to 10
+# the sentiment is binary with a label, and the score is actually just a confidence metric
+def convert_bert_scale(sentiment):
+    label = sentiment['label']
+    score = sentiment['score']
+
+    if label == 'POSITIVE':
+        return round(score * 5 + 5) # Map [0.5, 1.0] to [6, 10]
+    else:
+        return round((1 - score) * 5 + 1) # Map [0.0, 0.5] to [1, 5]
+
+# splits text into chunks of size no bigger than max tokens
+def split_into_chunks(text, chunk_size=300):
+    words = text.split() # get the words from the text
+    return [" ".join(words[i:i+chunk_size]) for i in range(0, len(words), chunk_size)]
 
 # Checks for correlation between a list of incident scores and sentiment scores for airlines
-def analyze_data(airline_scores, reviews, title):
-    incident_scores = []
-    names = []
-    for airline in airline_scores:
-        incident_scores.append(airline_scores[airline])
-        names.append(airline)
-    review_scores = []
-    for airline in reviews:
-        review_scores.append(reviews[airline][1])
+def analyze_data(results, title, min_incidents):
+    print(f"\n##### {title} #####")
+    print("Airlines included: ")
+    for airline in results:
+        if results[airline]['num_incidents'] >= min_incidents:
+            print(f"\t{airline}")
 
+    # create a list of the airline names with at least min_incidents incidents
+    airline_names = []
+    for airline in results:
+        if results[airline]['num_incidents'] >= min_incidents:
+            airline_names.append(airline)
+
+    # create a list of just the incident scores
+    incident_scores = []
+    for airline in airline_names:
+        incident_scores.append(results[airline]['incident_scores']['avg'])
+
+    # create a list of just the review scores, one for vader and another for bert
+    vader_review_scores = []
+    bert_review_scores = []
+    for airline in airline_names:
+        vader_review_scores.append(results[airline]['review_scores']['vader'])
+        bert_review_scores.append(results[airline]['review_scores']['bert'])
+
+    # perform the correlation calculations
+    print("\nVADER Correlation:")
+    result_spearman = stats.spearmanr(vader_review_scores, incident_scores)
+    spearman_stat, spearman_pvalue = result_spearman
+    print(f"\tSpearman Result: Correlation of {spearman_stat:.5f} with pvalue {spearman_pvalue:.5f}")
+    #print(f"\tSpearman Result: {result_spearman}")
+
+    result_pearson = stats.pearsonr(vader_review_scores, incident_scores)
+    pearson_stat, pearson_pvalue = result_pearson
+    print(f"\tPearson Result: Correlation of {pearson_stat:.5f} with pvalue {pearson_pvalue:.5f}")
+    #print(f"\tPearson Result: {result_pearson}")
+
+    # plot the graph for the vader sentiment analyzer
     plt.figure(figsize=(8, 6))
-    plt.scatter(incident_scores, review_scores, color='green', alpha=0.7)
-    for i in range(len(names)):
-        plt.text(incident_scores[i], review_scores[i], names[i])
-    plt.title(title)
+    plt.scatter(incident_scores, vader_review_scores, color='green', alpha=0.7)
+    for i in range(len(airline_names)):
+        plt.text(incident_scores[i], vader_review_scores[i], airline_names[i])
+    plt.title(f"{title} VADER")
     plt.xlabel("Incident Score")
     plt.ylabel("Sentiment Score")
     plt.grid(True)
     plt.show()
 
-    result_spearman = stats.spearmanr(review_scores, incident_scores)
-    print(f"Spearman Result: {result_spearman}")
+    # perform the correlation calculations
+    print("BERT Correlation")
+    result_spearman = stats.spearmanr(bert_review_scores, incident_scores)
+    spearman_stat, spearman_pvalue = result_spearman
+    print(f"\tSpearman Result: Correlation of {spearman_stat:.5f} with pvalue {spearman_pvalue:.5f}")
+    #print(f"\tSpearman Result: {result_spearman}")
 
-    result_pearson = stats.pearsonr(review_scores, incident_scores)
-    print(f"Pearson Result: {result_pearson}")
+    result_pearson = stats.pearsonr(bert_review_scores, incident_scores)
+    pearson_stat, pearson_pvalue = result_pearson
+    print(f"\tPearson Result: Correlation of {pearson_stat:.5f} with pvalue {pearson_pvalue:.5f}")
+    #print(f"\tPearson Result: {result_pearson}")
+
+    # then plot the graph for the bert sentiment analyzer
+    plt.figure(figsize=(8, 6))
+    plt.scatter(incident_scores, bert_review_scores, color='green', alpha=0.7)
+    for i in range(len(airline_names)):
+        plt.text(incident_scores[i], bert_review_scores[i], airline_names[i])
+    plt.title(f"{title} BERT")
+    plt.xlabel("Incident Score")
+    plt.ylabel("Sentiment Score")
+    plt.grid(True)
+    plt.show()
+
+# retrieves the final results dictionary from a file
+def load_results(file_path):
+    with open(file_path, "rb") as file:
+        try:
+            results = pickle.load(file)
+            return results
+        except:
+            # some error loading the file occurred, return None
+            return None
+
+# saves the final result dictionary as a pickle object to a file
+def save_results(file_path, results):
+    with open(file_path, "wb") as file:
+        pickle.dump(results, file)
 
 # prints the columns in an excel file
 def test_print_df_cols(df):
@@ -638,3 +872,5 @@ def test_print_df_cols(df):
 if __name__ == '__main__':
     main()
 #+end_src 
+
+#+results:

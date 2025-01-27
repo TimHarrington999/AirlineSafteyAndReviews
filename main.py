@@ -6,6 +6,7 @@ import pickle
 from nltk.sentiment import SentimentIntensityAnalyzer
 from scipy import stats
 import matplotlib.pyplot as plt
+import numpy as np
 from transformers import pipeline
 
 def main():
@@ -54,6 +55,7 @@ def main():
     print_results(results)
 
     # generate scatter plots
+    print(f"\n##\n##### Correlation Calculations: #####\n##")
     min_incidents_arr = [8, 3, 10]
     for i in range(len(min_incidents_arr)):
         title = f"Correlation Min {min_incidents_arr[i]}"
@@ -64,18 +66,45 @@ def main():
 def print_results(results):
     print(f"\n##\n##### AIRLINE SCORES: #####\n##")
     for airline in results:
+        # print the results data for each airline
         airline_incident_scores = results[airline]['incident_scores']
         airline_review_scores = results[airline]['review_scores']
+
         print(f"\n{airline}:")
         print(f"\tIncident Score: {airline_incident_scores['avg']}")
+
         print("\tInjury level counts:")
         for level in airline_incident_scores['injury']:
             print(f"\t\t{level}: {airline_incident_scores['injury'][level]}")
+
         print("\tDamage level counts:")
         for level in airline_incident_scores['damage']:
             print(f"\t\t{level}: {airline_incident_scores['damage'][level]}")
+
         print(f"\tVADER: {airline_review_scores['vader']}")
         print(f"\tBERT: {airline_review_scores['bert']}")
+
+        # then create a graph to visualize the injury and damage levels
+        categories = ['None', 'Minor', 'Serious/Substantial', 'Fatal/Destroyed']
+        injury_values = airline_incident_scores['injury'].values()
+        damage_values = airline_incident_scores['damage'].values()
+
+        x = np.arange(len(categories))
+        bar_width = 0.35
+
+        plt.bar(x - bar_width/2, injury_values, bar_width, label='Injury Levels', color='b')
+        plt.bar(x + bar_width/2, damage_values, bar_width, label='Damage Levels', color='g')
+
+        plt.xlabel('Injury/Damage Levels')
+        plt.ylabel('Counts')
+        plt.title(f"{airline} Injury and Damage Counts")
+        plt.xticks(x, categories)
+        plt.legend()
+
+        plt.tight_layout()
+        plt.show()
+
+
 
 # compute all data for the airlines that have at least min_incidents incidents
 # returns the results dictionary
@@ -560,7 +589,7 @@ def split_into_chunks(text, chunk_size=300):
 
 # Checks for correlation between a list of incident scores and sentiment scores for airlines
 def analyze_data(results, title, min_incidents):
-    print(f"\n{title}")
+    print(f"\n##### {title} #####")
     print("Airlines included: ")
     for airline in results:
         if results[airline]['num_incidents'] >= min_incidents:
@@ -587,10 +616,14 @@ def analyze_data(results, title, min_incidents):
     # perform the correlation calculations
     print("\nVADER Correlation:")
     result_spearman = stats.spearmanr(vader_review_scores, incident_scores)
-    print(f"\tSpearman Result: {result_spearman}")
+    spearman_stat, spearman_pvalue = result_spearman
+    print(f"\tSpearman Result: Correlation of {spearman_stat} with pvalue {spearman_pvalue}")
+    #print(f"\tSpearman Result: {result_spearman}")
 
     result_pearson = stats.pearsonr(vader_review_scores, incident_scores)
-    print(f"\tPearson Result: {result_pearson}")
+    pearson_stat, pearson_pvalue = result_pearson
+    print(f"\tPearson Result: Correlation of {pearson_stat} with pvalue {pearson_pvalue}")
+    #print(f"\tPearson Result: {result_pearson}")
 
     # plot the graph for the vader sentiment analyzer
     plt.figure(figsize=(8, 6))
@@ -606,10 +639,14 @@ def analyze_data(results, title, min_incidents):
     # perform the correlation calculations
     print("BERT Correlation")
     result_spearman = stats.spearmanr(bert_review_scores, incident_scores)
-    print(f"\tSpearman Result: {result_spearman}")
+    spearman_stat, spearman_pvalue = result_spearman
+    print(f"\tSpearman Result: Correlation of {spearman_stat} with pvalue {spearman_pvalue}")
+    #print(f"\tSpearman Result: {result_spearman}")
 
     result_pearson = stats.pearsonr(bert_review_scores, incident_scores)
-    print(f"\tPearson Result: {result_pearson}")
+    pearson_stat, pearson_pvalue = result_pearson
+    print(f"\tPearson Result: Correlation of {pearson_stat} with pvalue {pearson_pvalue}")
+    #print(f"\tPearson Result: {result_pearson}")
 
     # then plot the graph for the bert sentiment analyzer
     plt.figure(figsize=(8, 6))
