@@ -1,4 +1,6 @@
 Project: The Correlation Between Airline Sentiment and Airline Incidents
+
+Introduction:
 The goal of this project is to look into the possibility of a correlation
 between airline customer reviews and incidents for those airlines. In other
 words, do negative reviews predict the amount/severity of airline
@@ -13,10 +15,8 @@ machine it took about 30-45 minutes.
 Data Used:
 This project uses two main data sets, the first is a set of reviews for
 airline carriers pulled from Kaggle:
-old: https://www.kaggle.com/datasets/juhibhojani/airline-reviews/data as
-'Airline_review.csv'. 
-new: https://www.kaggle.com/datasets/joelljungstrom/128k-airline-reviews
-as 'AirlineReviews.csv'. The new file was too large for github to handle,
+https://www.kaggle.com/datasets/joelljungstrom/128k-airline-reviews
+as 'AirlineReviews.csv'. This file was too large for github to handle,
 so it will have to be manually downloaded from the link instead.
 The second is a record of airline incidents and accidents pulled from the NTSB:
 https://www.ntsb.gov/safety/Pages/research.aspx and saved in a file named
@@ -24,14 +24,16 @@ https://www.ntsb.gov/safety/Pages/research.aspx and saved in a file named
 NTSB doesn't directly mention the air carrier involved with each incident
 but the registration number, I had to run each registration number through
 the FAA website at:
-https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry. 
+https://registry.faa.gov/aircraftinquiry/Search/NNumberInquiry.
+These links are also in the README. The incident dataset has about 27000
+records and the review dataset has about 130000 reviews.
 
 Since there are hundreds of records to work with, I wrote up a script to run the
 numbers through this site automatically and then wrote the results to a new
 file that I named 'registration_info.pkl'. The overall results are stored
 in a file named 'results.pkl' once they are calculated.
 
-Development Process:
+Development Process and Methodology:
 The development began with a search for datasets. I was lucky to be able to
 find a good data set for customer reviews of airlines but had more
 difficulty finding a dataset for incidents for each commercial airline. The
@@ -43,43 +45,56 @@ commercial airlines so those would have to be filtered out.
 
 As it turns out, the faa website has a feature where you can input an
 N-Number and get the registration data. To do this by hand would be too
-tedious, so I wrote a webs craper to quickly and accurately get this
+tedious, so I wrote a web scraper to quickly and accurately get this
 data. This process took much longer than I originally anticipated. This is
 the first time that I've created a web scraper so it took some time to
 learn how to even start. In the end, the battle became making sure the
 scraper scraped the correct data. Since multiple records could be tied to
 an N-Number it had to correctly determine which one, if any, was the one
-active during the corresponding incident.
+active during the corresponding incident. As an example, early on my
+scraper would just find the first piece of text in the html response that
+was tagged with 'name' because we wanted to find the registered owner for
+that particular N-Number. This was incorrect fairly often, especially for
+the older incident records where it was more likely that the N-Number from
+the incident has either been reused since then and applies to other owners
+or the record just doesn't exist in the faa wesite anymore. To fix this,
+the scraper takes the date of the incident into account and now finds a
+piece of text tagged with 'name' in the section that had a date lining up
+with the incident date. This was the tricky part to implement, but once
+finished, solved the issue of getting incorrect owner names.
 
 After finishing the web scraper, I discovered that I don't have nearly as
 much data as I thought I had originally. The original data set of incidents
 had nearly 27,000 records. However, after filtering out non-commercial
 flights and flights that didn't have a findable owner, I only had 299
 records! At this point, I decided to double check for more data sets in
-this area online. To me, this seems to just be a testament to how safe air
-travel is, at least commercially.
+this area online. Unfortunately it doesn't seem like I have access to any
+data sets that would be free to use. It is possible that there is more data
+out there somewhere but has thus far remained hidden from me.
 
 After retrieving my data, my next task was to begin computing. First, I
 compute an average incident score for the major air carriers. Each incident
 has a score between 1 and 4. The incidents are graded on two aspects,
-highest injury level and damage level. These are graded on a scale from 1
+highest injury level and highest damage level. These are graded on a scale from 1
 to 4, where 1 is None, 2 is Minor, 3 is Serious/Substantial, and 4 is
-Fatal/Destroyed. For the review data, I ran each review linked to the major
-air carriers using Vader from nltk. It created a sentiment score for each
-review between -1 and 1, which I converted into a 1 to 10 scale. At this
-point, I had an average incident score and an average review sentiment
-score for each of the major airlines.
+Fatal/Destroyed. The score for each incident was computed with the
+following formula, where injury_score and damage_score takes the value of
+an integer between 1 and 4: (injury_score + damage_score) / 2. Then the
+score for the airline as a whole is just an average of these scores for all
+of its incident records. Here, a lower number indicates a better score
+since that equates to lower incident severity on average.
 
-Sometime in between working on the incident and review datasets, I came
-across a much larger data set for customer reviews. The original one that I
-had found only had 23171 reviews that were only a few years old. The new
-one has 129455 reviews that date back to 2001. 
+For the review data, I ran each review linked to the major air carriers
+through two sentiment analyzers, VADER and BERT. I'll describe how these
+work briefly but I'll include a link in the README to further reading for
+each. VADER is designed to handle sentiment in informal texts, making it a
+good choice for sentiment analysis. BERT analyzes text in a more
+sophisticated way. Essentially it is able to examine both sides of a word's
+context instead of just the left or the right. Now, once each analyzer had
+computed a sentiment for a review, I converted the scale to a 1-10 scale to
+allow for easuer visualization. To get an overall review score for each
+airline, the sentiment score for each of its reviews was averaged. 
 
-Next I implemented another text sentiment analyzer (BERT) alongside the
-original VADER one. BERT should be more sophisticated so ideally it will
-give us a clearer view on the correlation results. I also kept count of the
-injury/damage levels for each airline and display these in a graph at the
-end of the calculations. 
 
 Results:
 Originally, I was going to compare a count of incidents for each airline to
@@ -169,6 +184,7 @@ Spearman:
 Correlation = -0.7999999999999999
 pvalue = 0.20000000000000007
 
+Discussion:
 There are only two places where the two different sentiment models differ
 in their analysis of a correlation. The first is in the test with a minimum
 incident record of 3, the Spearman result indicated that there was a strong
@@ -874,3 +890,4 @@ if __name__ == '__main__':
 #+end_src 
 
 #+results:
+: None
